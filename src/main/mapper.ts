@@ -162,21 +162,30 @@ export class Mapper {
       const pressed = buttons[btn] ?? false
       const key = `btn:${btn}`
 
-      if (pressed && this._heldKeys.has(key)) {
-        // First press was already fired by the event handler.
-        // Here we only handle hold-repeat.
-        const now = Date.now()
-        const pressedAt = this._pressTime.get(key) ?? now
-        const lastFiredAt = this._lastFire.get(key) ?? now
-        const elapsed = (now - pressedAt) / 1000
-        const sinceLast = (now - lastFiredAt) / 1000
-
-        if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
+      if (pressed) {
+        if (!this._heldKeys.has(key)) {
+          // Polling fallback: buttonDown event was not received on this instance.
+          // Fire the first press now so no button is ever silently dropped.
+          const now = Date.now()
+          this._heldKeys.add(key)
+          this._pressTime.set(key, now)
           this._lastFire.set(key, now)
           keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+        } else {
+          // First press already handled by event. Handle hold-repeat.
+          const now = Date.now()
+          const pressedAt = this._pressTime.get(key) ?? now
+          const lastFiredAt = this._lastFire.get(key) ?? now
+          const elapsed = (now - pressedAt) / 1000
+          const sinceLast = (now - lastFiredAt) / 1000
+
+          if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
+            this._lastFire.set(key, now)
+            keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+          }
         }
-      } else if (!pressed && this._heldKeys.has(key)) {
-        // Release missed by the event — clean up
+      } else if (this._heldKeys.has(key)) {
+        // Release missed by buttonUp event — clean up
         this._heldKeys.delete(key)
         this._pressTime.delete(key)
         this._lastFire.delete(key)
