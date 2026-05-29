@@ -76,12 +76,19 @@ export interface ControllerAxisDef {
 
 export type ControllerInputDef = ControllerButtonDef | ControllerAxisDef
 
+export interface StickDef {
+  name: string    // Display name: "LS" | "RS"
+  axis_x: number  // axis_id for horizontal (SDL: -1=left, +1=right)
+  axis_y: number  // axis_id for vertical   (SDL: -1=up,   +1=down)
+}
+
 export interface ControllerProfile {
   id: string
   name: string
   namePatterns: string[]  // case-insensitive substrings matched against device name
   imageUrl: string        // import URL (from renderer assets)
   inputs: ControllerInputDef[]
+  sticks?: StickDef[]     // joystick stick definitions for pad visualization
 }
 
 // Controller capture result

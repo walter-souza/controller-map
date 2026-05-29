@@ -50,11 +50,18 @@ export default function MappingScreen({ device, onBack }: Props) {
   const profile: ControllerProfile | null = detectProfile(device.name)
   const [viewMode, setViewMode] = useState<'visual' | 'list'>(profile ? 'visual' : 'list')
   const [activeInputs, setActiveInputs] = useState<Set<string>>(new Set())
+  // Raw axis values for smooth joystick pad visualization (dot position)
+  const [axisValues, setAxisValues] = useState<Record<number, number>>({})
+  // Ref + RAF for throttling axisValues state updates to 60fps
+  const axisValuesRef = useRef<Record<number, number>>({})
+  const axisRafRef = useRef<number | null>(null)
 
   // Real-time input monitor — active when visual view is visible
   useEffect(() => {
     if (!profile || viewMode !== 'visual') {
       setActiveInputs(new Set())
+      setAxisValues({})
+      axisValuesRef.current = {}
       return
     }
     window.api.invoke('controller:monitor-start', device.id)
@@ -66,6 +73,7 @@ export default function MappingScreen({ device, onBack }: Props) {
     })
     const offAxis = window.api.on('controller:axis-motion', ({ axis, value }) => {
       const THRESHOLD = 0.5
+      // Threshold-based activeInputs (drives sector highlight + guide line highlight)
       setActiveInputs((prev) => {
         const s = new Set(prev)
         s.delete(`a:${axis}:1`)
@@ -74,11 +82,23 @@ export default function MappingScreen({ device, onBack }: Props) {
         else if (value < -THRESHOLD) s.add(`a:${axis}:-1`)
         return s
       })
+      // Raw axis values via RAF-throttled state update (drives dot position)
+      axisValuesRef.current = { ...axisValuesRef.current, [axis]: value }
+      if (!axisRafRef.current) {
+        axisRafRef.current = requestAnimationFrame(() => {
+          setAxisValues({ ...axisValuesRef.current })
+          axisRafRef.current = null
+        })
+      }
     })
     return () => {
       offDown(); offUp(); offAxis()
+      if (axisRafRef.current) cancelAnimationFrame(axisRafRef.current)
+      axisRafRef.current = null
       window.api.invoke('controller:monitor-stop')
       setActiveInputs(new Set())
+      setAxisValues({})
+      axisValuesRef.current = {}
     }
   }, [profile, viewMode, device.id])
 
@@ -260,6 +280,7 @@ export default function MappingScreen({ device, onBack }: Props) {
           mappings={mappings}
           isPlaying={isPlaying}
           activeInputs={activeInputs}
+          axisValues={axisValues}
           onAddMapping={openAddWithPreset}
           onDeleteMapping={handleDeleteMapping}
         />

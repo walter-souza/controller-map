@@ -9,6 +9,10 @@ export const eightbitdoUltimate: ControllerProfile = {
   name: '8BitDo Ultimate',
   namePatterns: ['8bitdo', '8bit do', 'ultimate wireless', 'ultimate 2'],
   imageUrl: controllerImage,
+  sticks: [
+    { name: 'LS', axis_x: 0, axis_y: 1 },
+    { name: 'RS', axis_x: 2, axis_y: 3 },
+  ],
   inputs: [
     // ── Shoulder buttons ──────────────────────────────────────────────────
     { type: 'axis',   axis_id: 4, direction:  1, name: 'L2',     x: 20.75, y: 11.5 },
