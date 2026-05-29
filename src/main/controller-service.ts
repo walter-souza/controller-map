@@ -38,6 +38,13 @@ export class ControllerService {
   private _chordButtonDown: ((e: { button: number }) => void) | null = null
   private _chordButtonUp: ((e: { button: number }) => void) | null = null
 
+  private _monitorTrackerInstance: SdlJoystickInstance | null = null
+  private _monitorListeners: {
+    down: (e: { button: number }) => void
+    up: (e: { button: number }) => void
+    axis: (e: { axis: number; value: number }) => void
+  } | null = null
+
   /**
    * Tracker instances kept open so SDL can resolve SDL_JoystickFromInstanceID()
    * for connected devices. @kmamal/sdl starts polling automatically on load,
@@ -154,6 +161,40 @@ export class ControllerService {
     this._chordButtonUp = null
     this._chordHeld.clear()
     this._chordAccumulated = []
+  }
+
+  startMonitor(
+    deviceId: number,
+    onButtonDown: (button: number) => void,
+    onButtonUp: (button: number) => void,
+    onAxisMotion: (axis: number, value: number) => void,
+  ): void {
+    this.stopMonitor()
+    const tracker = this._trackers.get(deviceId)
+    if (!tracker || tracker.closed) return
+
+    const down = (e: { button: number }) => onButtonDown(e.button)
+    const up = (e: { button: number }) => onButtonUp(e.button)
+    const axis = (e: { axis: number; value: number }) => onAxisMotion(e.axis, e.value)
+
+    tracker.on('buttonDown', down)
+    tracker.on('buttonUp', up)
+    tracker.on('axisMotion', axis)
+
+    this._monitorTrackerInstance = tracker
+    this._monitorListeners = { down, up, axis }
+  }
+
+  stopMonitor(): void {
+    if (this._monitorTrackerInstance && this._monitorListeners) {
+      try {
+        this._monitorTrackerInstance.off('buttonDown', this._monitorListeners.down)
+        this._monitorTrackerInstance.off('buttonUp', this._monitorListeners.up)
+        this._monitorTrackerInstance.off('axisMotion', this._monitorListeners.axis)
+      } catch { /* ignore */ }
+    }
+    this._monitorTrackerInstance = null
+    this._monitorListeners = null
   }
 
   private _onButtonDown = (event: { button: number }) => {

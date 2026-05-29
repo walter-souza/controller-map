@@ -8,6 +8,8 @@ export interface IpcInvokeMap {
   'controller:capture-stop': { args: []; result: void }
   'controller:chord-capture-start': { args: [deviceId: number]; result: void }
   'controller:chord-capture-stop': { args: []; result: void }
+  'controller:monitor-start': { args: [deviceId: number]; result: void }
+  'controller:monitor-stop': { args: []; result: void }
   'keyboard:capture-start': { args: []; result: void }
   'keyboard:capture-stop': { args: []; result: void }
   'mapper:start': {
@@ -32,6 +34,9 @@ export interface IpcEventMap {
   'controller:chord-captured': CaptureResult[]  // all buttons held simultaneously
   'keyboard:key-captured': string // e.g. "ctrl+shift+a"
   'mapper:disconnected': void
+  'controller:button-down': { button: number }
+  'controller:button-up': { button: number }
+  'controller:axis-motion': { axis: number; value: number }
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeMap

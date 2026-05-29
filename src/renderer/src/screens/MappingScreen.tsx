@@ -49,6 +49,38 @@ export default function MappingScreen({ device, onBack }: Props) {
   // Profile detection: auto-identify known controllers by device name
   const profile: ControllerProfile | null = detectProfile(device.name)
   const [viewMode, setViewMode] = useState<'visual' | 'list'>(profile ? 'visual' : 'list')
+  const [activeInputs, setActiveInputs] = useState<Set<string>>(new Set())
+
+  // Real-time input monitor — active when visual view is visible
+  useEffect(() => {
+    if (!profile || viewMode !== 'visual') {
+      setActiveInputs(new Set())
+      return
+    }
+    window.api.invoke('controller:monitor-start', device.id)
+    const offDown = window.api.on('controller:button-down', ({ button }) => {
+      setActiveInputs((prev) => new Set([...prev, `b:${button}`]))
+    })
+    const offUp = window.api.on('controller:button-up', ({ button }) => {
+      setActiveInputs((prev) => { const s = new Set(prev); s.delete(`b:${button}`); return s })
+    })
+    const offAxis = window.api.on('controller:axis-motion', ({ axis, value }) => {
+      const THRESHOLD = 0.5
+      setActiveInputs((prev) => {
+        const s = new Set(prev)
+        s.delete(`a:${axis}:1`)
+        s.delete(`a:${axis}:-1`)
+        if (value > THRESHOLD) s.add(`a:${axis}:1`)
+        else if (value < -THRESHOLD) s.add(`a:${axis}:-1`)
+        return s
+      })
+    })
+    return () => {
+      offDown(); offUp(); offAxis()
+      window.api.invoke('controller:monitor-stop')
+      setActiveInputs(new Set())
+    }
+  }, [profile, viewMode, device.id])
 
   // Load data on mount
   useEffect(() => {
@@ -227,6 +259,7 @@ export default function MappingScreen({ device, onBack }: Props) {
           profile={profile}
           mappings={mappings}
           isPlaying={isPlaying}
+          activeInputs={activeInputs}
           onAddMapping={openAddWithPreset}
           onDeleteMapping={handleDeleteMapping}
         />
