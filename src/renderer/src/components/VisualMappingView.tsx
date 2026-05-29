@@ -10,7 +10,7 @@ const LBL_L_X    = 17   // right edge of left labels
 const LBL_R_X    = 83   // left edge of right labels
 const ELBOW_L_X  = 22   // elbow X for left guide lines (inside image left edge)
 const ELBOW_R_X  = 78   // elbow X for right guide lines
-const MIN_GAP    = 9    // minimum vertical spacing between stacked labels (%)
+const MIN_GAP    = 6    // minimum vertical spacing between stacked labels (%)
 // Ellipse axes that appear circular in the non-square SVG viewBox (100×100 → 100:39)
 const DOT_RX     = 0.38
 const DOT_RY     = 0.98
@@ -134,9 +134,13 @@ export default function VisualMappingView({
 
             return (
               <g key={key} opacity={opacity}>
-                {/* Visible line + dot */}
+                {/* Visible line */}
                 <polyline points={pts} stroke={color} strokeWidth={sw} fill="none" strokeLinejoin="round" pointerEvents="none" />
-                <ellipse cx={bx} cy={by} rx={DOT_RX} ry={DOT_RY} fill={color} pointerEvents="none" />
+                {/* Dot: diamond for axes, circle for buttons */}
+                {input.type === 'axis'
+                  ? <polygon points={`${bx},${by - DOT_RY} ${bx + DOT_RX * 1.3},${by} ${bx},${by + DOT_RY} ${bx - DOT_RX * 1.3},${by}`} fill={color} pointerEvents="none" />
+                  : <ellipse cx={bx} cy={by} rx={DOT_RX} ry={DOT_RY} fill={color} pointerEvents="none" />
+                }
                 {/* Transparent wide hit area for hover detection */}
                 <polyline
                   points={pts}
