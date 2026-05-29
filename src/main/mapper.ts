@@ -15,6 +15,10 @@ type JoystickInstance = ReturnType<typeof sdl.joystick.openDevice>
 
 const AXIS_THRESHOLD = 0.5
 const AXIS_DEADZONE = 0.15
+// Grace window for chord detection: if a button that belongs to a chord is pressed,
+// we wait up to this many ms before firing its individual mapping.
+// This allows the other chord button(s) to arrive without triggering individual mappings first.
+const CHORD_GRACE_MS = 50
 
 interface AxisMapping {
   mappings: Mapping[]
@@ -65,6 +69,9 @@ export class Mapper {
   private _axisState = new Map<number, number>()
   // Angle mapping: configId → current active regionId
   private _angleHeld = new Map<string, string>()
+  // Chord grace window: buttons that belong to a chord and were just pressed, pending fire
+  // Maps buttonId → timestamp when first detected pressed (ms)
+  private _pendingChordButtons = new Map<number, number>()
 
   constructor(
     deviceId: number,
@@ -117,6 +124,7 @@ export class Mapper {
     this._lastFire.clear()
     this._axisState.clear()
     this._angleHeld.clear()
+    this._pendingChordButtons.clear()
   }
 
   // Immediately fires on SDL buttonDown event — no polling lag
@@ -220,6 +228,8 @@ export class Mapper {
           this._heldKeys.add(k)
           this._pressTime.set(k, now)
           this._lastFire.set(k, now)
+          // Cancel any pending individual fires for buttons in this chord
+          entry.inputs.filter((i) => i.type === 'button').forEach((i) => this._pendingChordButtons.delete(i.id))
           keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
         } else {
           const now = Date.now()
@@ -245,39 +255,65 @@ export class Mapper {
     const buttons = this._joystick.buttons
 
     for (let btn = 0; btn < buttons.length; btn++) {
-      if (suppressed.has(btn)) continue  // chord is handling this button
+      const pressed = buttons[btn] ?? false
+
+      if (suppressed.has(btn)) {
+        // Active chord owns this button — cancel any pending individual fire
+        this._pendingChordButtons.delete(btn)
+        continue
+      }
+
       const entry = this._buttonMappings.get(btn)
       if (!entry) continue
-      const pressed = buttons[btn] ?? false
+
       const key = `btn:${btn}`
 
       if (pressed) {
+        if (this._chordButtonIds.has(btn) && !this._heldKeys.has(key)) {
+          // Button is part of a chord and hasn't fired individually yet — apply grace window
+          if (!this._pendingChordButtons.has(btn)) {
+            // First detection: start the grace window, don't fire yet
+            this._pendingChordButtons.set(btn, Date.now())
+            continue
+          }
+          const elapsed = Date.now() - this._pendingChordButtons.get(btn)!
+          if (elapsed < CHORD_GRACE_MS) continue // still within grace window — keep waiting
+          // Grace window expired with no chord — fire individual mapping now
+          this._pendingChordButtons.delete(btn)
+          // fall through to normal first-press handling below
+        }
+
         if (!this._heldKeys.has(key)) {
-          // Polling fallback: buttonDown event was not received on this instance.
-          // Fire the first press now so no button is ever silently dropped.
+          // First press (either non-chord button, or chord button after grace window expired)
           const now = Date.now()
           this._heldKeys.add(key)
           this._pressTime.set(key, now)
           this._lastFire.set(key, now)
           keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
         } else {
-          // First press already handled by event. Handle hold-repeat.
+          // Hold-repeat
           const now = Date.now()
           const pressedAt = this._pressTime.get(key) ?? now
           const lastFiredAt = this._lastFire.get(key) ?? now
           const elapsed = (now - pressedAt) / 1000
           const sinceLast = (now - lastFiredAt) / 1000
-
           if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
             this._lastFire.set(key, now)
             keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
           }
         }
-      } else if (this._heldKeys.has(key)) {
-        // Release missed by buttonUp event — clean up
-        this._heldKeys.delete(key)
-        this._pressTime.delete(key)
-        this._lastFire.delete(key)
+      } else {
+        // Button is released
+        if (this._pendingChordButtons.has(btn)) {
+          // Quick tap: pressed and released within grace window, no chord fired
+          // Fire the individual mapping once so the input isn't lost
+          this._pendingChordButtons.delete(btn)
+          keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+        } else if (this._heldKeys.has(key)) {
+          this._heldKeys.delete(key)
+          this._pressTime.delete(key)
+          this._lastFire.delete(key)
+        }
       }
     }
   }
