@@ -92,9 +92,9 @@ export default function VisualMappingView({
     const active  = isInputActive(input, activeInputs)
     const hovered = hoveredKey === key
     if (active)  return 'text-yellow-400'
-    if (hovered) return mapped ? 'text-blue-200' : 'text-slate-300'
+    if (hovered) return mapped ? 'text-blue-200' : 'text-slate-200'
     if (mapped)  return 'text-blue-300 hover:text-red-400'
-    return 'text-slate-600 hover:text-slate-300'
+    return 'text-slate-400 hover:text-slate-100'
   }
 
   return (
@@ -176,9 +176,9 @@ export default function VisualMappingView({
                 ].join(' ')}
               >
                 {/* [key_combo] ◂ [name] — name is rightmost, closest to the controller */}
-                <span className={mapped ? 'font-semibold' : 'opacity-35'}>{mapped ? mapped.key_combo : '+'}</span>
-                <span className="opacity-35 text-[9px]">◂</span>
-                <span className="opacity-55">{input.name}</span>
+                <span className={mapped ? 'font-semibold' : 'text-slate-500'}>{mapped ? mapped.key_combo : '+'}</span>
+                <span className="opacity-40 text-[9px]">◂</span>
+                <span>{input.name}</span>
               </button>
             </div>
           )
@@ -208,9 +208,9 @@ export default function VisualMappingView({
                 ].join(' ')}
               >
                 {/* [name] ▸ [key_combo] — name is leftmost, closest to the controller */}
-                <span className="opacity-55">{input.name}</span>
-                <span className="opacity-35 text-[9px]">▸</span>
-                <span className={mapped ? 'font-semibold' : 'opacity-35'}>{mapped ? mapped.key_combo : '+'}</span>
+                <span>{input.name}</span>
+                <span className="opacity-40 text-[9px]">▸</span>
+                <span className={mapped ? 'font-semibold' : 'text-slate-500'}>{mapped ? mapped.key_combo : '+'}</span>
               </button>
             </div>
           )
