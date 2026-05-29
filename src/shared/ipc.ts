@@ -1,0 +1,33 @@
+// Typed IPC channel definitions
+import type { AppConfig, CaptureResult, DeviceInfo, Mapping, RepeatSettings } from './models'
+
+// Invoke channels (renderer → main, returns Promise)
+export interface IpcInvokeMap {
+  'controller:list': { args: []; result: DeviceInfo[] }
+  'controller:capture-start': { args: [deviceId: number]; result: void }
+  'controller:capture-stop': { args: []; result: void }
+  'keyboard:capture-start': { args: []; result: void }
+  'keyboard:capture-stop': { args: []; result: void }
+  'mapper:start': {
+    args: [deviceId: number, mappings: Mapping[], settings: RepeatSettings]
+    result: boolean // false if device could not be opened
+  }
+  'mapper:stop': { args: []; result: void }
+  'mapper:is-active': { args: []; result: boolean }
+  'mappings:load': { args: [deviceId: number]; result: Mapping[] }
+  'mappings:save': { args: [deviceId: number, mappings: Mapping[]]; result: void }
+  'settings:load': { args: []; result: RepeatSettings }
+  'settings:save': { args: [settings: RepeatSettings]; result: void }
+  'config:load': { args: []; result: AppConfig }
+  'config:save': { args: [config: AppConfig]; result: void }
+}
+
+// Event channels (main → renderer, via on/removeListener)
+export interface IpcEventMap {
+  'controller:button-captured': CaptureResult
+  'keyboard:key-captured': string // e.g. "ctrl+shift+a"
+  'mapper:disconnected': void
+}
+
+export type IpcInvokeChannel = keyof IpcInvokeMap
+export type IpcEventChannel = keyof IpcEventMap
