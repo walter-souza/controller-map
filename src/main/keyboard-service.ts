@@ -80,7 +80,17 @@ export class KeyboardService {
       }
 
       // Non-modifier key pressed — form combo
-      const parts = [...this._heldModifiers, name.toLowerCase()]
+      // Normalize uiohook names to friendly display strings
+      const KEY_DISPLAY: Record<string, string> = {
+        Numrow0: '0', Numrow1: '1', Numrow2: '2', Numrow3: '3', Numrow4: '4',
+        Numrow5: '5', Numrow6: '6', Numrow7: '7', Numrow8: '8', Numrow9: '9',
+        Space: 'space', Return: 'enter', Backspace: 'backspace', Tab: 'tab',
+        Escape: 'esc', Delete: 'delete', Insert: 'insert',
+        Home: 'home', End: 'end', PageUp: 'pageup', PageDown: 'pagedown',
+        ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down',
+      }
+      const normalized = KEY_DISPLAY[name] ?? name.toLowerCase()
+      const parts = [...this._heldModifiers, normalized]
       const combo = parts.join('+')
       const cb = this._captureCallback
       this.stopCapture()
@@ -132,11 +142,25 @@ export class KeyboardService {
       f1: Key.F1, f2: Key.F2, f3: Key.F3, f4: Key.F4,
       f5: Key.F5, f6: Key.F6, f7: Key.F7, f8: Key.F8,
       f9: Key.F9, f10: Key.F10, f11: Key.F11, f12: Key.F12,
+      // uiohook names for main-row digit keys (e.g. captured as "numrow1")
+      numrow0: Key.Num0, numrow1: Key.Num1, numrow2: Key.Num2,
+      numrow3: Key.Num3, numrow4: Key.Num4, numrow5: Key.Num5,
+      numrow6: Key.Num6, numrow7: Key.Num7, numrow8: Key.Num8,
+      numrow9: Key.Num9,
+      // uiohook names for numpad digit keys
+      numpad0: Key.NumPad0, numpad1: Key.NumPad1, numpad2: Key.NumPad2,
+      numpad3: Key.NumPad3, numpad4: Key.NumPad4, numpad5: Key.NumPad5,
+      numpad6: Key.NumPad6, numpad7: Key.NumPad7, numpad8: Key.NumPad8,
+      numpad9: Key.NumPad9,
+      // bare digit strings (from manual or normalized entry)
+      '0': Key.Num0, '1': Key.Num1, '2': Key.Num2, '3': Key.Num3,
+      '4': Key.Num4, '5': Key.Num5, '6': Key.Num6, '7': Key.Num7,
+      '8': Key.Num8, '9': Key.Num9,
     }
 
-    if (map[name]) return map[name]
+    if (map[name] !== undefined) return map[name]
 
-    // Single character
+    // Single letter — nut-js Key enum uses uppercase names (A, B, C, ...)
     if (name.length === 1) {
       const upper = name.toUpperCase()
       return (Key as Record<string, import('@nut-tree-fork/nut-js').Key>)[upper] ?? null
