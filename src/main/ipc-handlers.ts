@@ -45,7 +45,7 @@ export function registerIpcHandlers(): void {
 
   handle('keyboard:capture-stop', () => keyboardService.stopCapture())
 
-  handle('mapper:start', (deviceId, mappings, settings) => {
+  handle('mapper:start', (deviceId, mappings, settings, angleMappings) => {
     if (activeMapper) {
       activeMapper.stop()
       activeMapper = null
@@ -58,6 +58,7 @@ export function registerIpcHandlers(): void {
       },
       settings.initial_delay_ms / 1000,
       settings.repeat_interval_ms / 1000,
+      angleMappings,
     )
     mapper.start()
     if (!mapper.isActive) return false
@@ -75,6 +76,10 @@ export function registerIpcHandlers(): void {
   handle('mappings:load', (deviceId) => persistence.loadMappings(deviceId))
 
   handle('mappings:save', (deviceId, mappings) => persistence.saveMappings(deviceId, mappings))
+
+  handle('angle-mappings:load', (deviceId) => persistence.loadAngleMappings(deviceId))
+
+  handle('angle-mappings:save', (deviceId, configs) => persistence.saveAngleMappings(deviceId, configs))
 
   handle('settings:load', () => persistence.loadRepeatSettings())
 

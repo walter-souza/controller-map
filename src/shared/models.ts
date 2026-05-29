@@ -25,6 +25,26 @@ export interface DeviceInfo {
   name: string
 }
 
+// Angle (joystick radial) mapping
+export interface AngleNode {
+  id: string
+  angle: number // degrees: 0=right, 90=up, 180=left, 270=down
+}
+
+export interface AngleRegion {
+  id: string
+  key_combo: string
+}
+
+export interface AngleMappingConfig {
+  id: string
+  axis_x: number     // joystick axis index for horizontal
+  axis_y: number     // joystick axis index for vertical (SDL positive=down)
+  deadzone: number   // magnitude threshold 0..1
+  nodes: AngleNode[] // sorted ascending by angle; N nodes → N regions
+  regions: AngleRegion[] // region[i] spans nodes[i].angle → nodes[(i+1)%N].angle
+}
+
 // Controller capture result
 export type CaptureResult =
   | { type: 'button'; button_id: number; button_name: string }

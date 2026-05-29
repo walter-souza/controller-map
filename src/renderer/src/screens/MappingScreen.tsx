@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { DeviceInfo, Mapping, RepeatSettings } from '../../../shared/models'
+import type { AngleMappingConfig, DeviceInfo, Mapping, RepeatSettings } from '../../../shared/models'
 import AddMappingDialog from '../components/AddMappingDialog'
+import AngleMappingDialog from '../components/AngleMappingDialog'
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog'
 import SettingsDialog from '../components/SettingsDialog'
 
@@ -21,17 +22,22 @@ function sameKey(a: Mapping, b: Mapping): boolean {
 
 export default function MappingScreen({ device, onBack }: Props) {
   const [mappings, setMappings] = useState<Mapping[]>([])
+  const [angleMappings, setAngleMappings] = useState<AngleMappingConfig[]>([])
   const [settings, setSettings] = useState<RepeatSettings>({ initial_delay_ms: 400, repeat_interval_ms: 50 })
   const [isPlaying, setIsPlaying] = useState(false)
   const [pulse, setPulse] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [showAngleAdd, setShowAngleAdd] = useState(false)
+  const [editingAngle, setEditingAngle] = useState<AngleMappingConfig | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null)
+  const [deleteAngleId, setDeleteAngleId] = useState<string | null>(null)
   const pulseRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Load data on mount
   useEffect(() => {
     window.api.invoke('mappings:load', device.id).then(setMappings)
+    window.api.invoke('angle-mappings:load', device.id).then(setAngleMappings)
     window.api.invoke('settings:load').then(setSettings)
   }, [device.id])
 
@@ -63,9 +69,17 @@ export default function MappingScreen({ device, onBack }: Props) {
     [device.id],
   )
 
+  const saveAngleMappings = useCallback(
+    (next: AngleMappingConfig[]) => {
+      setAngleMappings(next)
+      window.api.invoke('angle-mappings:save', device.id, next)
+    },
+    [device.id],
+  )
+
   const handlePlay = async () => {
-    if (mappings.length === 0) return
-    const ok = await window.api.invoke('mapper:start', device.id, mappings, settings)
+    if (mappings.length === 0 && angleMappings.length === 0) return
+    const ok = await window.api.invoke('mapper:start', device.id, mappings, settings, angleMappings)
     if (ok) setIsPlaying(true)
   }
 
@@ -88,6 +102,20 @@ export default function MappingScreen({ device, onBack }: Props) {
     const next = mappings.filter((_, i) => i !== index)
     saveMappings(next)
     setDeleteIndex(null)
+  }
+
+  const handleAngleSaved = (cfg: AngleMappingConfig) => {
+    const next = angleMappings.some((a) => a.id === cfg.id)
+      ? angleMappings.map((a) => (a.id === cfg.id ? cfg : a))
+      : [...angleMappings, cfg]
+    saveAngleMappings(next)
+    setShowAngleAdd(false)
+    setEditingAngle(null)
+  }
+
+  const confirmDeleteAngle = (id: string) => {
+    saveAngleMappings(angleMappings.filter((a) => a.id !== id))
+    setDeleteAngleId(null)
   }
 
   const dotColor = isPlaying ? (pulse ? 'text-green-500' : 'text-green-700') : 'text-slate-300'
@@ -121,7 +149,14 @@ export default function MappingScreen({ device, onBack }: Props) {
           disabled={isPlaying}
           className="btn-ctrl text-xs disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          + Adicionar
+          + Botão
+        </button>
+        <button
+          onClick={() => setShowAngleAdd(true)}
+          disabled={isPlaying}
+          className="btn-ctrl text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          ⊕ Ângulo
         </button>
         {isPlaying ? (
           <button onClick={handlePause} className="btn-danger text-xs">
@@ -130,7 +165,7 @@ export default function MappingScreen({ device, onBack }: Props) {
         ) : (
           <button
             onClick={handlePlay}
-            disabled={mappings.length === 0}
+            disabled={mappings.length === 0 && angleMappings.length === 0}
             className="btn-primary text-xs disabled:opacity-40 disabled:cursor-not-allowed"
           >
             ▶ Iniciar
@@ -140,10 +175,10 @@ export default function MappingScreen({ device, onBack }: Props) {
 
       {/* List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
-        {mappings.length === 0 && (
+        {mappings.length === 0 && angleMappings.length === 0 && (
           <div className="text-center mt-10">
             <p className="text-slate-400 text-sm">Nenhum mapeamento ainda.</p>
-            <p className="text-slate-400 text-xs mt-1">Clique em "+ Adicionar" para começar.</p>
+            <p className="text-slate-400 text-xs mt-1">Clique em "+ Botão" ou "⊕ Ângulo" para começar.</p>
           </div>
         )}
         {mappings.map((m, i) => (
@@ -160,6 +195,40 @@ export default function MappingScreen({ device, onBack }: Props) {
             </button>
           </div>
         ))}
+
+        {/* Angle mapping cards */}
+        {angleMappings.length > 0 && (
+          <>
+            {mappings.length > 0 && <div className="border-t border-slate-100 my-1" />}
+            {angleMappings.map((cfg) => (
+              <div key={cfg.id} className="card px-4 py-3 flex items-center gap-3">
+                <span className="text-lg leading-none">🕹</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-slate-700">
+                    Eixo {cfg.axis_x} × Eixo {cfg.axis_y}
+                  </div>
+                  <div className="text-xs text-slate-400 truncate">
+                    {cfg.regions.map((r) => r.key_combo || '?').join(' / ')}
+                    <span className="ml-1 text-slate-300">· {cfg.regions.length} regiões</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEditingAngle(cfg)}
+                  disabled={isPlaying}
+                  className="btn-ghost text-xs disabled:opacity-40"
+                >
+                  ✎
+                </button>
+                <button
+                  onClick={() => setDeleteAngleId(cfg.id)}
+                  className="btn-ghost text-red-400 hover:text-red-600 hover:bg-red-50 text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
       {/* Dialogs */}
@@ -174,10 +243,23 @@ export default function MappingScreen({ device, onBack }: Props) {
           onCancel={() => setShowAdd(false)}
         />
       )}
+      {(showAngleAdd || editingAngle) && (
+        <AngleMappingDialog
+          initial={editingAngle ?? undefined}
+          onConfirm={handleAngleSaved}
+          onCancel={() => { setShowAngleAdd(false); setEditingAngle(null) }}
+        />
+      )}
       {deleteIndex !== null && (
         <DeleteConfirmDialog
           onConfirm={() => confirmDelete(deleteIndex)}
           onCancel={() => setDeleteIndex(null)}
+        />
+      )}
+      {deleteAngleId !== null && (
+        <DeleteConfirmDialog
+          onConfirm={() => confirmDeleteAngle(deleteAngleId)}
+          onCancel={() => setDeleteAngleId(null)}
         />
       )}
       {showSettings && (

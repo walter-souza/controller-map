@@ -5,7 +5,7 @@
  * No separate thread needed — Node.js event loop handles timing.
  */
 
-import type { Mapping } from '../shared/models'
+import type { AngleMappingConfig, Mapping } from '../shared/models'
 import { controllerService } from './controller-service'
 import { keyboardService } from './keyboard-service'
 
@@ -38,6 +38,7 @@ export class Mapper {
   private _buttonMappings = new Map<number, ButtonMapping>()
   private _axisMappings = new Map<number, AxisMapping>()
   private _diagonalMappings: Mapping[] = []
+  private _angleMappings: AngleMappingConfig[] = []
 
   // Hold-repeat tracking
   private _heldKeys = new Set<string>()        // composite key string
@@ -45,6 +46,8 @@ export class Mapper {
   private _lastFire = new Map<string, number>()  // ms since epoch
   // Axis state: last active direction per axis
   private _axisState = new Map<number, number>()
+  // Angle mapping: configId → current active regionId
+  private _angleHeld = new Map<string, string>()
 
   constructor(
     deviceId: number,
@@ -52,11 +55,13 @@ export class Mapper {
     onDisconnect?: () => void,
     initialDelay = 0.4,
     repeatInterval = 0.05,
+    angleMappings: AngleMappingConfig[] = [],
   ) {
     this._deviceId = deviceId
     this._onDisconnect = onDisconnect
     this._initialDelay = initialDelay
     this._repeatInterval = repeatInterval
+    this._angleMappings = angleMappings
     this._buildMappings(mappings)
   }
 
@@ -86,6 +91,7 @@ export class Mapper {
     this._pressTime.clear()
     this._lastFire.clear()
     this._axisState.clear()
+    this._angleHeld.clear()
   }
 
   private _buildMappings(mappings: Mapping[]): void {
@@ -112,11 +118,10 @@ export class Mapper {
   private _tick(): void {
     controllerService.pollEvents()
 
-    // Check button states via SDL events (held tracking is done externally via events)
-    // For simplicity: re-read button states from joystick object each tick
     this._processButtons()
     this._processAxes()
     this._processDiagonals()
+    this._processAngleMappings()
   }
 
   private _processButtons(): void {
@@ -202,6 +207,45 @@ export class Mapper {
     }
   }
 
+  private _processAngleMappings(): void {
+    if (!this._joystick || this._angleMappings.length === 0) return
+    const axes = this._joystick.axes
+
+    for (const cfg of this._angleMappings) {
+      const vx = axes[cfg.axis_x] ?? 0
+      const vy = axes[cfg.axis_y] ?? 0
+      const magnitude = Math.sqrt(vx * vx + vy * vy)
+      const stateKey = `angle_cfg:${cfg.id}`
+
+      if (magnitude < cfg.deadzone) {
+        // Outside deadzone — release held key
+        if (this._angleHeld.has(cfg.id)) {
+          this._heldKeys.delete(stateKey)
+          this._pressTime.delete(stateKey)
+          this._lastFire.delete(stateKey)
+          this._angleHeld.delete(cfg.id)
+        }
+        continue
+      }
+
+      // SDL Y axis positive=down; negate so 90°=up matches visual circle
+      const angleDeg = ((Math.atan2(-vy, vx) * 180) / Math.PI + 360) % 360
+      const region = _findAngleRegion(cfg, angleDeg)
+      if (!region || !region.key_combo) continue
+
+      const prevRegionId = this._angleHeld.get(cfg.id)
+      if (prevRegionId !== region.id) {
+        // Region changed — reset hold state
+        this._heldKeys.delete(stateKey)
+        this._pressTime.delete(stateKey)
+        this._lastFire.delete(stateKey)
+        this._angleHeld.set(cfg.id, region.id)
+      }
+
+      this._handleHeld(stateKey, region.key_combo)
+    }
+  }
+
   private _handleHeld(key: string, combo: string): void {
     const now = Date.now()
 
@@ -225,4 +269,25 @@ export class Mapper {
       keyboardService.pressCombo(combo).catch(() => {})
     }
   }
+}
+
+function _findAngleRegion(cfg: AngleMappingConfig, angle: number): AngleMappingConfig['regions'][0] | null {
+  const { nodes, regions } = cfg
+  const n = nodes.length
+  if (n === 0 || regions.length === 0) return null
+  if (n === 1) return regions[0] ?? null
+
+  for (let i = 0; i < n; i++) {
+    const start = nodes[i].angle
+    const end = nodes[(i + 1) % n].angle
+    const region = regions[i]
+    if (!region) continue
+
+    const inRegion = start < end
+      ? angle >= start && angle < end
+      : angle >= start || angle < end // wrap-around (e.g. 315° → 45°)
+
+    if (inRegion) return region
+  }
+  return null
 }
