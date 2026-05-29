@@ -1,5 +1,5 @@
 import { memo, useState } from 'react'
-import type { ControllerAxisDef, ControllerInputDef, ControllerProfile, CaptureResult, Mapping, StickDef } from '../../../shared/models'
+import type { AngleMappingConfig, ControllerAxisDef, ControllerInputDef, ControllerProfile, CaptureResult, Mapping, StickDef } from '../../../shared/models'
 
 // ── Layout constants (% of container) ─────────────────────────────────────────
 const IMG_LEFT   = 20
@@ -21,11 +21,13 @@ const PAD_DEADZONE = 0.05
 interface Props {
   profile: ControllerProfile
   mappings: Mapping[]
+  angleMappings: AngleMappingConfig[]
   isPlaying: boolean
   activeInputs?: Set<string>
   axisValues?: Record<number, number>
   onAddMapping: (presetInput: CaptureResult) => void
   onDeleteMapping: (mapping: Mapping) => void
+  onEditAngleMapping: (stick: StickDef) => void
 }
 
 function findMapping(input: ControllerInputDef, mappings: Mapping[]): Mapping | undefined {
@@ -144,15 +146,55 @@ function computePadSectors(
   }))
 }
 
+// Compute sectors from an AngleMappingConfig for real-time joystick pad rendering.
+// AngleMappingConfig angles: 0=right, 90=up, 180=left, 270=down (math CCW, y-up).
+// JoystickPad SVG angles: 0=right, 90=down, 180=left, 270=up (CW, y-down).
+// Conversion: svgAngle = (360 - mathAngle) % 360, and region start/end are swapped.
+function computePadSectorsFromAngleMapping(
+  cfg: AngleMappingConfig,
+  axisX: number,
+  axisY: number,
+): SectorDef[] {
+  const n = cfg.nodes.length
+  if (n === 0) return []
+
+  const magnitude = Math.sqrt(axisX * axisX + axisY * axisY)
+  const outsideDeadzone = magnitude > cfg.deadzone
+  // Math angle: atan2(-axisY, axisX) because SDL axisY is positive-down but math Y is up
+  const mathDeg = outsideDeadzone
+    ? ((Math.atan2(-axisY, axisX) * 180) / Math.PI + 360) % 360
+    : -1
+
+  return cfg.nodes.map((node, i) => {
+    const nextAngle = cfg.nodes[(i + 1) % n].angle
+    const span = (nextAngle - node.angle + 360) % 360
+
+    let isActive = false
+    if (outsideDeadzone && mathDeg >= 0) {
+      const offset = (mathDeg - node.angle + 360) % 360
+      isActive = offset < span && offset >= 0
+    }
+
+    const isMapped = (cfg.regions[i]?.key_combo ?? '').trim().length > 0
+
+    // Convert math angles → SVG: negate + swap start/end (flip Y axis, CCW→CW)
+    const svgStart = (360 - nextAngle + 360) % 360
+    const svgEnd   = (360 - node.angle + 360) % 360
+
+    return { startDeg: svgStart, endDeg: svgEnd, isActive, isMapped }
+  })
+}
+
 // ── JoystickPad component ─────────────────────────────────────────────────────
 interface PadProps {
   stick: StickDef
   axisX: number
   axisY: number
   sectors: SectorDef[]
+  onClick?: () => void
 }
 
-const JoystickPad = memo(function JoystickPad({ stick, axisX, axisY, sectors }: PadProps) {
+const JoystickPad = memo(function JoystickPad({ stick, axisX, axisY, sectors, onClick }: PadProps) {
   const dx = Math.abs(axisX) < PAD_DEADZONE ? 0 : Math.max(-1, Math.min(1, axisX))
   const dy = Math.abs(axisY) < PAD_DEADZONE ? 0 : Math.max(-1, Math.min(1, axisY))
   const dotX = PAD_CX + dx * PAD_R * 0.82
@@ -168,6 +210,11 @@ const JoystickPad = memo(function JoystickPad({ stick, axisX, axisY, sectors }: 
 
   return (
     <div className="flex flex-col items-center gap-1">
+      <div
+        onClick={onClick}
+        title={onClick ? `Editar mapeamento de ${stick.name}` : undefined}
+        className={onClick ? 'cursor-pointer rounded-full ring-0 hover:ring-2 hover:ring-blue-400/60 transition-all' : ''}
+      >
       <svg width="88" height="88" viewBox="0 0 90 90">
         {/* Background circle */}
         <circle cx={PAD_CX} cy={PAD_CY} r={PAD_R + 4} fill="#1e293b" stroke="#334155" strokeWidth="1" />
@@ -198,14 +245,16 @@ const JoystickPad = memo(function JoystickPad({ stick, axisX, axisY, sectors }: 
         <circle cx={dotX} cy={dotY} r={5.5} fill="rgba(0,0,0,0.5)" />
         <circle cx={dotX} cy={dotY} r={4.5} fill={anyActive ? '#facc15' : '#94a3b8'} />
       </svg>
+      </div>
       <span className="text-[10px] text-slate-400 font-mono">{stick.name}</span>
+      {onClick && <span className="text-[9px] text-slate-600 italic">clique para editar</span>}
     </div>
   )
 })
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function VisualMappingView({
-  profile, mappings, isPlaying, activeInputs = new Set(), axisValues = {}, onAddMapping, onDeleteMapping,
+  profile, mappings, angleMappings, isPlaying, activeInputs = new Set(), axisValues = {}, onAddMapping, onDeleteMapping, onEditAngleMapping,
 }: Props) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null)
 
@@ -364,15 +413,24 @@ export default function VisualMappingView({
         {/* Joystick pad visualizers */}
         {profile.sticks && profile.sticks.length > 0 && (
           <div className="flex mt-4 gap-16">
-            {profile.sticks.map((stick) => (
-              <JoystickPad
-                key={stick.name}
-                stick={stick}
-                axisX={axisValues[stick.axis_x] ?? 0}
-                axisY={axisValues[stick.axis_y] ?? 0}
-                sectors={computePadSectors(stick, mappings, activeInputs)}
-              />
-            ))}
+            {profile.sticks.map((stick) => {
+              const angleCfg = angleMappings.find(
+                (a) => a.axis_x === stick.axis_x && a.axis_y === stick.axis_y
+              )
+              const sectors = angleCfg
+                ? computePadSectorsFromAngleMapping(angleCfg, axisValues[stick.axis_x] ?? 0, axisValues[stick.axis_y] ?? 0)
+                : computePadSectors(stick, mappings, activeInputs)
+              return (
+                <JoystickPad
+                  key={stick.name}
+                  stick={stick}
+                  axisX={axisValues[stick.axis_x] ?? 0}
+                  axisY={axisValues[stick.axis_y] ?? 0}
+                  sectors={sectors}
+                  onClick={isPlaying ? undefined : () => onEditAngleMapping(stick)}
+                />
+              )
+            })}
           </div>
         )}
       </div>

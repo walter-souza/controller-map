@@ -278,11 +278,35 @@ export default function MappingScreen({ device, onBack }: Props) {
         <VisualMappingView
           profile={profile}
           mappings={mappings}
+          angleMappings={angleMappings}
           isPlaying={isPlaying}
           activeInputs={activeInputs}
           axisValues={axisValues}
           onAddMapping={openAddWithPreset}
           onDeleteMapping={handleDeleteMapping}
+          onEditAngleMapping={(stick) => {
+            const existing = angleMappings.find(
+              (a) => a.axis_x === stick.axis_x && a.axis_y === stick.axis_y
+            )
+            setEditingAngle(existing ?? {
+              id: crypto.randomUUID(),
+              axis_x: stick.axis_x,
+              axis_y: stick.axis_y,
+              deadzone: 0.2,
+              nodes: [
+                { id: crypto.randomUUID(), angle: 45 },
+                { id: crypto.randomUUID(), angle: 135 },
+                { id: crypto.randomUUID(), angle: 225 },
+                { id: crypto.randomUUID(), angle: 315 },
+              ],
+              regions: [
+                { id: crypto.randomUUID(), key_combo: '' },
+                { id: crypto.randomUUID(), key_combo: '' },
+                { id: crypto.randomUUID(), key_combo: '' },
+                { id: crypto.randomUUID(), key_combo: '' },
+              ],
+            })
+          }}
         />
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
