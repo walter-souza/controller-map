@@ -69,9 +69,10 @@ export class Mapper {
   private _axisState = new Map<number, number>()
   // Angle mapping: configId → current active regionId
   private _angleHeld = new Map<string, string>()
-  // Chord grace window: buttons that belong to a chord and were just pressed, pending fire
-  // Maps buttonId → timestamp when first detected pressed (ms)
-  private _pendingChordButtons = new Map<number, number>()
+  // Chord grace window: buttons that belong to a chord and were just pressed, pending fire.
+  // fromChord=true means the button was held inside an active chord that just deactivated —
+  // in that case, releasing within the grace window should NOT fire the individual mapping.
+  private _pendingChordButtons = new Map<number, { pressedAt: number; fromChord: boolean }>()
 
   constructor(
     deviceId: number,
@@ -197,17 +198,19 @@ export class Mapper {
 
     // Chords are processed first; they return suppressed button IDs so single-button
     // mappings don't double-fire when the button is part of an active chord.
-    const suppressedButtons = this._processChords()
-    this._processButtons(suppressedButtons)
+    const { suppressed, chordReleased } = this._processChords()
+    this._processButtons(suppressed, chordReleased)
     this._processAxes()
     this._processDiagonals()
     this._processAngleMappings()
   }
 
-  // Returns the set of button IDs consumed by at least one fully-active chord.
-  private _processChords(): Set<number> {
+  // Returns suppressed button IDs (part of fully-active chords) and chordReleased
+  // (buttons from chords that just became inactive this tick — still physically held).
+  private _processChords(): { suppressed: Set<number>; chordReleased: Set<number> } {
     const suppressed = new Set<number>()
-    if (!this._joystick) return suppressed
+    const chordReleased = new Set<number>()
+    if (!this._joystick) return { suppressed, chordReleased }
 
     for (const entry of this._chordMappings) {
       const allActive = entry.inputs.every((input) => {
@@ -244,13 +247,16 @@ export class Mapper {
         this._heldKeys.delete(entry.holdKey)
         this._pressTime.delete(entry.holdKey)
         this._lastFire.delete(entry.holdKey)
+        // Mark buttons still physically held as coming from a chord release — individual
+        // mappings should not fire if they're released shortly after the chord ends.
+        entry.inputs.filter((i) => i.type === 'button').forEach((i) => chordReleased.add(i.id))
       }
     }
 
-    return suppressed
+    return { suppressed, chordReleased }
   }
 
-  private _processButtons(suppressed: Set<number>): void {
+  private _processButtons(suppressed: Set<number>, chordReleased: Set<number>): void {
     if (!this._joystick) return
     const buttons = this._joystick.buttons
 
@@ -272,11 +278,14 @@ export class Mapper {
         if (this._chordButtonIds.has(btn) && !this._heldKeys.has(key)) {
           // Button is part of a chord and hasn't fired individually yet — apply grace window
           if (!this._pendingChordButtons.has(btn)) {
-            // First detection: start the grace window, don't fire yet
-            this._pendingChordButtons.set(btn, Date.now())
+            // First detection: start the grace window.
+            // fromChord=true if the button was held inside a chord that just deactivated.
+            const fromChord = chordReleased.has(btn)
+            this._pendingChordButtons.set(btn, { pressedAt: Date.now(), fromChord })
             continue
           }
-          const elapsed = Date.now() - this._pendingChordButtons.get(btn)!
+          const pending = this._pendingChordButtons.get(btn)!
+          const elapsed = Date.now() - pending.pressedAt
           if (elapsed < CHORD_GRACE_MS) continue // still within grace window — keep waiting
           // Grace window expired with no chord — fire individual mapping now
           this._pendingChordButtons.delete(btn)
@@ -305,10 +314,13 @@ export class Mapper {
       } else {
         // Button is released
         if (this._pendingChordButtons.has(btn)) {
-          // Quick tap: pressed and released within grace window, no chord fired
-          // Fire the individual mapping once so the input isn't lost
+          const pending = this._pendingChordButtons.get(btn)!
           this._pendingChordButtons.delete(btn)
-          keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+          // Quick tap (fresh press released before grace window expires) → fire individual.
+          // fromChord=true means it was held in a chord that deactivated — don't fire.
+          if (!pending.fromChord) {
+            keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+          }
         } else if (this._heldKeys.has(key)) {
           this._heldKeys.delete(key)
           this._pressTime.delete(key)
