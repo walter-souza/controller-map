@@ -79,6 +79,7 @@ function degToRad(deg: number): number {
   return (deg * Math.PI) / 180
 }
 
+// Draws a pie-slice sector from center, arc extent determines largeArcFlag automatically
 function sectorPath(startDeg: number, endDeg: number): string {
   const s = degToRad(startDeg)
   const e = degToRad(endDeg)
@@ -86,15 +87,61 @@ function sectorPath(startDeg: number, endDeg: number): string {
   const y1 = PAD_CY + PAD_R * Math.sin(s)
   const x2 = PAD_CX + PAD_R * Math.cos(e)
   const y2 = PAD_CY + PAD_R * Math.sin(e)
-  return `M ${PAD_CX} ${PAD_CY} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${PAD_R} ${PAD_R} 0 0 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`
+  let extent = endDeg - startDeg
+  if (extent <= 0) extent += 360
+  const largeArc = extent > 180 ? 1 : 0
+  return `M ${PAD_CX} ${PAD_CY} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${PAD_R} ${PAD_R} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`
 }
 
-// Precomputed sector SVG paths (pie slices: 315°→45°=right, 45°→135°=down, etc.)
-const SECTOR = {
-  up:    sectorPath(225, 315),
-  right: sectorPath(315, 405), // 405 = 45° but crossing 0° — equivalent to sectorPath(315→45)
-  down:  sectorPath(45, 135),
-  left:  sectorPath(135, 225),
+// ── Dynamic sector computation ────────────────────────────────────────────────
+// Cardinal angles in SVG coords (y-down): right=0, down=90, left=180, up=270
+interface SectorDef {
+  startDeg: number
+  endDeg: number
+  isActive: boolean
+  isMapped: boolean
+}
+
+function computePadSectors(
+  stick: StickDef,
+  mappings: Mapping[],
+  activeInputs: Set<string>
+): SectorDef[] {
+  const DIRS = [
+    { centerDeg: 270, axisId: stick.axis_y, dir: -1 }, // up
+    { centerDeg: 0,   axisId: stick.axis_x, dir:  1 }, // right
+    { centerDeg: 90,  axisId: stick.axis_y, dir:  1 }, // down
+    { centerDeg: 180, axisId: stick.axis_x, dir: -1 }, // left
+  ]
+  const relevant = DIRS
+    .map((d) => ({
+      centerDeg: d.centerDeg,
+      isMapped: isAxisMapped(d.axisId, d.dir, mappings),
+      isActive: activeInputs.has(`a:${d.axisId}:${d.dir}`),
+    }))
+    .filter((d) => d.isMapped || d.isActive)
+
+  const n = relevant.length
+  if (n === 0) return []
+  if (n === 1) {
+    return [{ startDeg: 0, endDeg: 360, isActive: relevant[0].isActive, isMapped: relevant[0].isMapped }]
+  }
+
+  // Sort by cardinal angle, then split the circle at midpoints between adjacent directions
+  const sorted = [...relevant].sort((a, b) => a.centerDeg - b.centerDeg)
+  const boundaries = sorted.map((s, i) => {
+    const next = sorted[(i + 1) % n]
+    if (next.centerDeg > s.centerDeg) return (s.centerDeg + next.centerDeg) / 2
+    // Wraparound (e.g., last sector at 270° → first at 0°): midpoint crosses the 0°/360° boundary
+    return ((s.centerDeg + next.centerDeg + 360) / 2) % 360
+  })
+
+  return sorted.map((s, i) => ({
+    startDeg: boundaries[(i - 1 + n) % n],
+    endDeg: boundaries[i],
+    isActive: s.isActive,
+    isMapped: s.isMapped,
+  }))
 }
 
 // ── JoystickPad component ─────────────────────────────────────────────────────
@@ -102,54 +149,51 @@ interface PadProps {
   stick: StickDef
   axisX: number
   axisY: number
-  isUpActive: boolean
-  isDownActive: boolean
-  isLeftActive: boolean
-  isRightActive: boolean
-  isMappedUp: boolean
-  isMappedDown: boolean
-  isMappedLeft: boolean
-  isMappedRight: boolean
+  sectors: SectorDef[]
 }
 
-const JoystickPad = memo(function JoystickPad({
-  stick, axisX, axisY,
-  isUpActive, isDownActive, isLeftActive, isRightActive,
-  isMappedUp, isMappedDown, isMappedLeft, isMappedRight,
-}: PadProps) {
+const JoystickPad = memo(function JoystickPad({ stick, axisX, axisY, sectors }: PadProps) {
   const dx = Math.abs(axisX) < PAD_DEADZONE ? 0 : Math.max(-1, Math.min(1, axisX))
   const dy = Math.abs(axisY) < PAD_DEADZONE ? 0 : Math.max(-1, Math.min(1, axisY))
   const dotX = PAD_CX + dx * PAD_R * 0.82
   const dotY = PAD_CY + dy * PAD_R * 0.82
-  const anyActive = isUpActive || isDownActive || isLeftActive || isRightActive
+  const anyActive = sectors.some((s) => s.isActive)
+  const isFullCircle = sectors.length === 1
 
-  function sectorFill(active: boolean, mapped: boolean): string {
-    if (active) return 'rgba(250,204,21,0.45)'
-    if (mapped) return 'rgba(96,165,250,0.15)'
+  function sectorFill(isActive: boolean, isMapped: boolean): string {
+    if (isActive) return 'rgba(250,204,21,0.45)'
+    if (isMapped) return 'rgba(96,165,250,0.18)'
     return 'transparent'
   }
-
-  // Diagonal crosshair endpoints (at 45° inside the circle)
-  const d45 = (PAD_R / Math.SQRT2).toFixed(2)
 
   return (
     <div className="flex flex-col items-center gap-1">
       <svg width="88" height="88" viewBox="0 0 90 90">
         {/* Background circle */}
         <circle cx={PAD_CX} cy={PAD_CY} r={PAD_R + 4} fill="#1e293b" stroke="#334155" strokeWidth="1" />
-        {/* Sectors */}
-        <path d={SECTOR.up}    fill={sectorFill(isUpActive,    isMappedUp)}    />
-        <path d={SECTOR.right} fill={sectorFill(isRightActive, isMappedRight)} />
-        <path d={SECTOR.down}  fill={sectorFill(isDownActive,  isMappedDown)}  />
-        <path d={SECTOR.left}  fill={sectorFill(isLeftActive,  isMappedLeft)}  />
+        {/* Sectors: full circle when only 1 mapped direction; pie slices otherwise */}
+        {isFullCircle
+          ? <circle cx={PAD_CX} cy={PAD_CY} r={PAD_R} fill={sectorFill(sectors[0].isActive, sectors[0].isMapped)} />
+          : sectors.map((s, i) => <path key={i} d={sectorPath(s.startDeg, s.endDeg)} fill={sectorFill(s.isActive, s.isMapped)} />)
+        }
         {/* Outer ring */}
         <circle cx={PAD_CX} cy={PAD_CY} r={PAD_R} fill="none" stroke="#475569" strokeWidth="0.8" />
-        {/* H+V crosshair */}
+        {/* H+V crosshair reference lines */}
         <line x1={PAD_CX - PAD_R} y1={PAD_CY} x2={PAD_CX + PAD_R} y2={PAD_CY} stroke="#475569" strokeWidth="0.5" opacity="0.4" />
         <line x1={PAD_CX} y1={PAD_CY - PAD_R} x2={PAD_CX} y2={PAD_CY + PAD_R} stroke="#475569" strokeWidth="0.5" opacity="0.4" />
-        {/* Diagonal sector dividers */}
-        <line x1={PAD_CX - +d45} y1={PAD_CY - +d45} x2={PAD_CX + +d45} y2={PAD_CY + +d45} stroke="#475569" strokeWidth="0.5" opacity="0.4" />
-        <line x1={PAD_CX + +d45} y1={PAD_CY - +d45} x2={PAD_CX - +d45} y2={PAD_CY + +d45} stroke="#475569" strokeWidth="0.5" opacity="0.4" />
+        {/* Sector boundary lines from center to rim (skip when full circle) */}
+        {!isFullCircle && sectors.map((s, i) => {
+          const rad = degToRad(s.startDeg)
+          return (
+            <line
+              key={i}
+              x1={PAD_CX} y1={PAD_CY}
+              x2={(PAD_CX + PAD_R * Math.cos(rad)).toFixed(2)}
+              y2={(PAD_CY + PAD_R * Math.sin(rad)).toFixed(2)}
+              stroke="#475569" strokeWidth="0.5" opacity="0.4"
+            />
+          )
+        })}
         {/* Dot shadow + dot */}
         <circle cx={dotX} cy={dotY} r={5.5} fill="rgba(0,0,0,0.5)" />
         <circle cx={dotX} cy={dotY} r={4.5} fill={anyActive ? '#facc15' : '#94a3b8'} />
@@ -326,14 +370,7 @@ export default function VisualMappingView({
                 stick={stick}
                 axisX={axisValues[stick.axis_x] ?? 0}
                 axisY={axisValues[stick.axis_y] ?? 0}
-                isUpActive={activeInputs.has(`a:${stick.axis_y}:-1`)}
-                isDownActive={activeInputs.has(`a:${stick.axis_y}:1`)}
-                isLeftActive={activeInputs.has(`a:${stick.axis_x}:-1`)}
-                isRightActive={activeInputs.has(`a:${stick.axis_x}:1`)}
-                isMappedUp={isAxisMapped(stick.axis_y, -1, mappings)}
-                isMappedDown={isAxisMapped(stick.axis_y, 1, mappings)}
-                isMappedLeft={isAxisMapped(stick.axis_x, -1, mappings)}
-                isMappedRight={isAxisMapped(stick.axis_x, 1, mappings)}
+                sectors={computePadSectors(stick, mappings, activeInputs)}
               />
             ))}
           </div>
