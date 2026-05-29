@@ -11,6 +11,9 @@ const { keyboard, Key } = require('@nut-tree-fork/nut-js') as typeof import('@nu
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { uIOhook, UiohookKey } = require('uiohook-napi') as typeof import('uiohook-napi')
 
+// Eliminate nut-js built-in delay between key press and release (default is 500ms!)
+keyboard.config.autoDelayMs = 0
+
 export type KeyCaptureCallback = (combo: string) => void
 
 // Map uiohook keycode to readable name

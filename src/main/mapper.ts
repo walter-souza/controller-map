@@ -74,7 +74,13 @@ export class Mapper {
     this._joystick = controllerService.openJoystick(this._deviceId)
     if (!this._joystick) return
     this._isActive = true
-    this._tickInterval = setInterval(() => this._tick(), 16)
+
+    // Event-driven button handling: fire first press immediately (zero latency)
+    this._joystick.on('buttonDown', this._onButtonDown)
+    this._joystick.on('buttonUp', this._onButtonUp)
+
+    // 4ms tick for hold-repeat and axis/angle polling
+    this._tickInterval = setInterval(() => this._tick(), 4)
   }
 
   stop(): void {
@@ -83,6 +89,8 @@ export class Mapper {
       this._tickInterval = null
     }
     if (this._joystick) {
+      this._joystick.off('buttonDown', this._onButtonDown)
+      this._joystick.off('buttonUp', this._onButtonUp)
       controllerService.closeJoystick(this._joystick)
       this._joystick = null
     }
@@ -92,6 +100,26 @@ export class Mapper {
     this._lastFire.clear()
     this._axisState.clear()
     this._angleHeld.clear()
+  }
+
+  // Immediately fires on SDL buttonDown event — no polling lag
+  private _onButtonDown = (event: { button: number }) => {
+    const entry = this._buttonMappings.get(event.button)
+    if (!entry) return
+    const key = `btn:${event.button}`
+    if (this._heldKeys.has(key)) return // already tracked (shouldn't happen)
+    const now = Date.now()
+    this._heldKeys.add(key)
+    this._pressTime.set(key, now)
+    this._lastFire.set(key, now)
+    keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+  }
+
+  private _onButtonUp = (event: { button: number }) => {
+    const key = `btn:${event.button}`
+    this._heldKeys.delete(key)
+    this._pressTime.delete(key)
+    this._lastFire.delete(key)
   }
 
   private _buildMappings(mappings: Mapping[]): void {
@@ -133,9 +161,22 @@ export class Mapper {
       if (!entry) continue
       const pressed = buttons[btn] ?? false
       const key = `btn:${btn}`
-      if (pressed) {
-        this._handleHeld(key, entry.mapping.key_combo)
-      } else {
+
+      if (pressed && this._heldKeys.has(key)) {
+        // First press was already fired by the event handler.
+        // Here we only handle hold-repeat.
+        const now = Date.now()
+        const pressedAt = this._pressTime.get(key) ?? now
+        const lastFiredAt = this._lastFire.get(key) ?? now
+        const elapsed = (now - pressedAt) / 1000
+        const sinceLast = (now - lastFiredAt) / 1000
+
+        if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
+          this._lastFire.set(key, now)
+          keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+        }
+      } else if (!pressed && this._heldKeys.has(key)) {
+        // Release missed by the event — clean up
         this._heldKeys.delete(key)
         this._pressTime.delete(key)
         this._lastFire.delete(key)
