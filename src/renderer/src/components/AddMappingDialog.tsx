@@ -9,72 +9,28 @@ interface Props {
   onCancel: () => void
 }
 
-// Capture phase state machine:
-//  ctrl-primary → idle → (ctrl-extra → idle)* → key → ready
-type CapturePhase = 'ctrl-primary' | 'idle' | 'ctrl-extra' | 'key' | 'ready'
-
-function captureResultToChordInput(r: CaptureResult): ChordInput | null {
-  if (r.type === 'diagonal') return null
-  return {
-    type: r.type,
-    button_id: r.button_id,
-    button_name: r.button_name,
-    axis_direction: r.type === 'axis' ? r.axis_direction : undefined,
-  }
-}
-
-// Returns a canonical label for all captured inputs joined with " + "
-function inputsLabel(primary: CaptureResult, extras: ChordInput[]): string {
-  return [primary.button_name, ...extras.map((e) => e.button_name)].join(' + ')
-}
+// Capture phase state machine: chord-capture → key → ready
+type CapturePhase = 'chord-capture' | 'key' | 'ready'
 
 export default function AddMappingDialog({ deviceId, existingMappings, onConfirm, onCancel }: Props) {
-  const [phase, setPhase] = useState<CapturePhase>('ctrl-primary')
-  const [primaryCapture, setPrimaryCapture] = useState<CaptureResult | null>(null)
-  const [chordInputs, setChordInputs] = useState<ChordInput[]>([])
+  const [phase, setPhase] = useState<CapturePhase>('chord-capture')
+  const [capturedInputs, setCapturedInputs] = useState<CaptureResult[]>([])
   const [keyCombo, setKeyCombo] = useState<string | null>(null)
 
-  // Start primary controller capture automatically on open
+  // Chord capture: accumulates all simultaneously held buttons; fires on release
   useEffect(() => {
-    if (phase !== 'ctrl-primary') return
-    window.api.invoke('controller:capture-start', deviceId)
-    const off = window.api.on('controller:button-captured', (result) => {
-      setPrimaryCapture(result)
-      setChordInputs([])
-      setPhase('idle')
+    if (phase !== 'chord-capture') return
+    window.api.invoke('controller:chord-capture-start', deviceId)
+    const off = window.api.on('controller:chord-captured', (results) => {
+      setCapturedInputs(results)
+      // Auto-proceed to key capture
+      setPhase('key')
     })
     return () => {
       off()
-      window.api.invoke('controller:capture-stop')
+      window.api.invoke('controller:chord-capture-stop')
     }
   }, [phase, deviceId])
-
-  // Capture an additional chord input
-  useEffect(() => {
-    if (phase !== 'ctrl-extra') return
-    window.api.invoke('controller:capture-start', deviceId)
-    const off = window.api.on('controller:button-captured', (result) => {
-      const ci = captureResultToChordInput(result)
-      if (ci) {
-        setChordInputs((prev) => {
-          // Deduplicate by type + button_id + axis_direction
-          const key = `${ci.type}:${ci.button_id}:${ci.axis_direction ?? 0}`
-          const primaryKey = primaryCapture
-            ? `${primaryCapture.type}:${primaryCapture.button_id}:${primaryCapture.type === 'axis' ? primaryCapture.axis_direction : 0}`
-            : ''
-          if (key === primaryKey || prev.some((e) => `${e.type}:${e.button_id}:${e.axis_direction ?? 0}` === key)) {
-            return prev
-          }
-          return [...prev, ci]
-        })
-      }
-      setPhase('idle')
-    })
-    return () => {
-      off()
-      window.api.invoke('controller:capture-stop')
-    }
-  }, [phase, deviceId, primaryCapture])
 
   // Key capture
   useEffect(() => {
@@ -90,19 +46,18 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
     }
   }, [phase])
 
-  const isOverwrite = primaryCapture
+  const primary = capturedInputs[0] ?? null
+  const chordInputs: ChordInput[] = capturedInputs.slice(1).map((r) => ({
+    type: r.type as 'button' | 'axis',
+    button_id: r.button_id,
+    button_name: r.button_name,
+    axis_direction: r.type === 'axis' ? r.axis_direction : undefined,
+  }))
+
+  const isOverwrite = primary
     ? existingMappings.some((m) => {
-        if (m.source_type !== primaryCapture.type) return false
-        if (m.button_id !== primaryCapture.button_id) return false
-        if (primaryCapture.type === 'axis' && m.axis_direction !== primaryCapture.axis_direction) return false
-        if (primaryCapture.type === 'diagonal') {
-          return (
-            m.axis_direction === primaryCapture.axis_direction &&
-            m.axis_id_y === primaryCapture.axis_id_y &&
-            m.axis_direction_y === primaryCapture.axis_direction_y
-          )
-        }
-        // For chords, same primary + same chord set = overwrite
+        if (m.source_type !== primary.type) return false
+        if (m.button_id !== primary.button_id) return false
         const newChordKey = chordInputs.map((c) => `${c.type}:${c.button_id}:${c.axis_direction ?? 0}`).sort().join('|')
         const existChordKey = (m.chord_inputs ?? []).map((c) => `${c.type}:${c.button_id}:${c.axis_direction ?? 0}`).sort().join('|')
         return newChordKey === existChordKey
@@ -110,92 +65,52 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
     : false
 
   const handleConfirm = () => {
-    if (!primaryCapture || !keyCombo) return
+    if (!primary || !keyCombo) return
     const mapping: Mapping = {
-      button_id: primaryCapture.button_id,
-      button_name: primaryCapture.button_name,
+      button_id: primary.button_id,
+      button_name: primary.button_name,
       key_combo: keyCombo,
-      source_type: primaryCapture.type,
-      axis_direction: primaryCapture.type !== 'button' ? primaryCapture.axis_direction : 0,
-      axis_id_y: primaryCapture.type === 'diagonal' ? primaryCapture.axis_id_y : null,
-      axis_direction_y: primaryCapture.type === 'diagonal' ? primaryCapture.axis_direction_y : 0,
+      source_type: primary.type,
+      axis_direction: primary.type !== 'button' ? primary.axis_direction : 0,
+      axis_id_y: primary.type === 'diagonal' ? primary.axis_id_y : null,
+      axis_direction_y: primary.type === 'diagonal' ? primary.axis_direction_y : 0,
       chord_inputs: chordInputs.length > 0 ? chordInputs : undefined,
     }
     onConfirm(mapping)
   }
 
-  const recaptureCtrl = () => {
-    setPhase('ctrl-primary')
-    setPrimaryCapture(null)
-    setChordInputs([])
+  const retryCapture = () => {
+    setCapturedInputs([])
     setKeyCombo(null)
+    setPhase('chord-capture')
   }
 
-  const addChordInput = () => setPhase('ctrl-extra')
-
-  const removeChordInput = (idx: number) =>
-    setChordInputs((prev) => prev.filter((_, i) => i !== idx))
-
-  const proceedToKey = () => setPhase('key')
-
-  const recaptureKey = () => {
+  const retryKey = () => {
     setKeyCombo(null)
     setPhase('key')
   }
 
+  const inputsLabel = capturedInputs.map((r) => r.button_name).join(' + ')
+
   return (
-    <Modal title="Novo mapeamento" subtitle="Pressione um botão no controle e uma tecla no teclado" onClose={onCancel}>
+    <Modal title="Novo mapeamento" subtitle="Segure os botões do acorde e solte para capturar" onClose={onCancel}>
       <div className="flex gap-4 p-5">
 
         {/* Controller panel */}
         <div className="flex-1 card p-4 text-center">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Controle</p>
-
-          {phase === 'ctrl-primary' ? (
-            <p className="text-sm text-slate-400 animate-pulse">Aguardando...</p>
-          ) : phase === 'ctrl-extra' ? (
-            <p className="text-sm text-indigo-400 animate-pulse">Pressione mais um botão...</p>
-          ) : primaryCapture ? (
-            <div className="flex flex-col items-center gap-2">
-              {/* Primary + chord badges */}
-              <div className="flex flex-wrap justify-center gap-1">
-                <button onClick={recaptureCtrl} className="badge-ctrl text-sm px-3 py-1 cursor-pointer">
-                  {primaryCapture.button_name}
-                </button>
-                {chordInputs.map((ci, idx) => (
-                  <span key={idx} className="flex items-center gap-0.5">
-                    <span className="text-slate-400 text-xs">+</span>
-                    <span className="badge-ctrl text-sm px-2 py-1 flex items-center gap-1">
-                      {ci.button_name}
-                      <button onClick={() => removeChordInput(idx)} className="text-slate-400 hover:text-red-500 leading-none ml-0.5">×</button>
-                    </span>
-                  </span>
-                ))}
-              </div>
-              {/* Chord action buttons */}
-              <div className="flex gap-2 mt-1">
-                <button onClick={addChordInput} className="btn-ghost text-xs px-2 py-1">
-                  ＋ Adicionar
-                </button>
-                {(phase === 'idle') && (
-                  <button onClick={proceedToKey} className="btn-ctrl text-xs px-2 py-1">
-                    → Tecla
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : null}
-
-          {phase === 'ctrl-primary' && (
-            <p className="text-xs text-slate-400 mt-2">Pressione um botão ou mova um eixo</p>
-          )}
-          {phase === 'ctrl-extra' && (
-            <p className="text-xs text-slate-400 mt-2">
-              <button onClick={() => setPhase('idle')} className="text-indigo-400 underline">Cancelar</button>
-            </p>
-          )}
-          {(phase === 'idle' || phase === 'key' || phase === 'ready') && primaryCapture && chordInputs.length === 0 && (
-            <p className="text-xs text-slate-400 mt-2">Clique para substituir</p>
+          {phase === 'chord-capture' ? (
+            <>
+              <p className="text-sm text-slate-400 animate-pulse">Aguardando...</p>
+              <p className="text-xs text-slate-400 mt-2">Segure os botões e solte</p>
+            </>
+          ) : (
+            <>
+              <button onClick={retryCapture} className="badge-ctrl text-sm px-3 py-1 cursor-pointer">
+                {inputsLabel}
+              </button>
+              <p className="text-xs text-slate-400 mt-2">Clique para recapturar</p>
+            </>
           )}
         </div>
 
@@ -205,23 +120,23 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
         <div className="flex-1 card p-4 text-center">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Teclado</p>
           {phase === 'key' ? (
-            <p className="text-sm text-slate-400 animate-pulse">Aguardando...</p>
+            <>
+              <p className="text-sm text-slate-400 animate-pulse">Aguardando...</p>
+              <p className="text-xs text-slate-400 mt-2">Pressione uma tecla ou atalho</p>
+            </>
           ) : keyCombo ? (
-            <button onClick={recaptureKey} className="badge-key text-sm px-3 py-1 cursor-pointer">
-              {keyCombo}
-            </button>
+            <>
+              <button onClick={retryKey} className="badge-key text-sm px-3 py-1 cursor-pointer">
+                {keyCombo}
+              </button>
+              <p className="text-xs text-slate-400 mt-2">Clique para substituir</p>
+            </>
           ) : (
-            <p className="text-sm text-slate-400">–</p>
+            <>
+              <p className="text-sm text-slate-400">–</p>
+              <p className="text-xs text-slate-400 mt-2">Aguardando controle primeiro</p>
+            </>
           )}
-          <p className="text-xs text-slate-400 mt-2">
-            {phase === 'key'
-              ? 'Pressione uma tecla ou atalho'
-              : keyCombo
-                ? 'Clique para substituir'
-                : phase === 'idle'
-                  ? 'Clique em "→ Tecla" para continuar'
-                  : 'Aguardando controle primeiro'}
-          </p>
         </div>
       </div>
 
@@ -242,3 +157,4 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
     </Modal>
   )
 }
+

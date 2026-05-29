@@ -64,8 +64,15 @@ export function registerIpcHandlers(): void {
 
   handle('controller:capture-stop', () => controllerService.stopCapture())
 
+  handle('controller:chord-capture-start', (deviceId) => {
+    controllerService.startChordCapture(deviceId, (results) => {
+      webContents?.send('controller:chord-captured', results)
+    })
+  })
+
+  handle('controller:chord-capture-stop', () => controllerService.stopChordCapture())
+
   handle('keyboard:capture-start', () => {
-    startInputSuppression()
     keyboardService.startCapture((combo) => {
       stopInputSuppression()
       webContents?.send('keyboard:key-captured', combo)

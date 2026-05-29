@@ -16,6 +16,7 @@ const AXIS_THRESHOLD = 0.5
 const AXIS_DEADZONE = 0.15
 
 export type ButtonCaptureCallback = (result: CaptureResult) => void
+export type ChordCaptureCallback = (results: CaptureResult[]) => void
 
 type SdlDevice = (typeof sdl.joystick.devices)[number]
 type SdlJoystickInstance = ReturnType<typeof sdl.joystick.openDevice>
@@ -29,6 +30,13 @@ function axisArrow(axisId: number, direction: number): string {
 export class ControllerService {
   private _captureCallback: ButtonCaptureCallback | null = null
   private _captureInstance: SdlJoystickInstance | null = null
+
+  private _chordCaptureCallback: ChordCaptureCallback | null = null
+  private _chordCaptureInstance: SdlJoystickInstance | null = null
+  private _chordHeld = new Set<number>()
+  private _chordAccumulated: CaptureResult[] = []
+  private _chordButtonDown: ((e: { button: number }) => void) | null = null
+  private _chordButtonUp: ((e: { button: number }) => void) | null = null
 
   /**
    * Tracker instances kept open so SDL can resolve SDL_JoystickFromInstanceID()
@@ -91,6 +99,61 @@ export class ControllerService {
       this._captureInstance = null
     }
     this._captureCallback = null
+  }
+
+  startChordCapture(deviceId: number, callback: ChordCaptureCallback): void {
+    this.stopChordCapture()
+    this._chordCaptureCallback = callback
+    this._chordHeld.clear()
+    this._chordAccumulated = []
+
+    try {
+      const device = sdl.joystick.devices.find((d: SdlDevice) => d.id === deviceId)
+      if (!device) return
+      const instance = sdl.joystick.openDevice(device)
+      this._chordCaptureInstance = instance
+
+      this._chordButtonDown = (event: { button: number }) => {
+        if (!this._chordHeld.has(event.button)) {
+          this._chordHeld.add(event.button)
+          this._chordAccumulated.push({
+            type: 'button',
+            button_id: event.button,
+            button_name: `Botão ${event.button}`,
+          })
+        }
+      }
+
+      this._chordButtonUp = (_event: { button: number }) => {
+        this._chordHeld.delete(_event.button)
+        // All released and at least one button was pressed → commit the chord
+        if (this._chordHeld.size === 0 && this._chordAccumulated.length > 0) {
+          const results = [...this._chordAccumulated]
+          const cb = this._chordCaptureCallback
+          this.stopChordCapture()
+          cb?.(results)
+        }
+      }
+
+      instance.on('buttonDown', this._chordButtonDown)
+      instance.on('buttonUp', this._chordButtonUp)
+    } catch {
+      this._chordCaptureCallback = null
+    }
+  }
+
+  stopChordCapture(): void {
+    if (this._chordCaptureInstance) {
+      if (this._chordButtonDown) this._chordCaptureInstance.off('buttonDown', this._chordButtonDown)
+      if (this._chordButtonUp) this._chordCaptureInstance.off('buttonUp', this._chordButtonUp)
+      if (!this._chordCaptureInstance.closed) this._chordCaptureInstance.close()
+      this._chordCaptureInstance = null
+    }
+    this._chordCaptureCallback = null
+    this._chordButtonDown = null
+    this._chordButtonUp = null
+    this._chordHeld.clear()
+    this._chordAccumulated = []
   }
 
   private _onButtonDown = (event: { button: number }) => {
