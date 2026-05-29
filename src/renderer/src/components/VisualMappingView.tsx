@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { ControllerInputDef, ControllerProfile, CaptureResult, Mapping } from '../../../shared/models'
 
 // ── Layout constants (% of container) ─────────────────────────────────────────
@@ -66,17 +67,35 @@ function spreadLabels(inputs: ControllerInputDef[]): Array<{ input: ControllerIn
   return result
 }
 
-function lineColor(input: ControllerInputDef, mapped: Mapping | undefined, active: boolean): string {
-  if (active)  return '#facc15' // yellow-400
-  if (mapped)  return '#60a5fa' // blue-400
-  return '#334155'              // slate-700 (subtle)
-}
 
 export default function VisualMappingView({
   profile, mappings, isPlaying, activeInputs = new Set(), onAddMapping, onDeleteMapping,
 }: Props) {
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null)
   const leftLabels  = spreadLabels(profile.inputs.filter((i) => i.x < 50))
   const rightLabels = spreadLabels(profile.inputs.filter((i) => i.x >= 50))
+
+  // Derive SVG element appearance based on active / hovered / mapped state
+  function svgStyle(input: ControllerInputDef, mapped: Mapping | undefined) {
+    const key    = inputKey(input)
+    const active  = isInputActive(input, activeInputs)
+    const hovered = hoveredKey === key
+    if (active)  return { color: '#facc15', opacity: 0.95, sw: '0.5' }
+    if (hovered) return { color: mapped ? '#93c5fd' : '#94a3b8', opacity: 0.95, sw: '0.5' }
+    if (mapped)  return { color: '#60a5fa', opacity: 0.65, sw: '0.28' }
+    return { color: '#334155', opacity: 0.3, sw: '0.28' }
+  }
+
+  // Derive label CSS classes based on active / hovered / mapped
+  function labelClass(input: ControllerInputDef, mapped: Mapping | undefined): string {
+    const key    = inputKey(input)
+    const active  = isInputActive(input, activeInputs)
+    const hovered = hoveredKey === key
+    if (active)  return 'text-yellow-400'
+    if (hovered) return mapped ? 'text-blue-200' : 'text-slate-300'
+    if (mapped)  return 'text-blue-300 hover:text-red-400'
+    return 'text-slate-600 hover:text-slate-300'
+  }
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-2 overflow-hidden select-none">
@@ -93,49 +112,41 @@ export default function VisualMappingView({
         />
 
         {/* ── SVG guide lines ─────────────────────────────────────────────── */}
-        {/* viewBox 0 0 100 100 + preserveAspectRatio=none: SVG coords = % of container */}
+        {/* SVG has pointer-events enabled; invisible wide polylines act as hit areas */}
         <svg
-          className="absolute inset-0 w-full h-full pointer-events-none"
+          className="absolute inset-0 w-full h-full"
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
           style={{ zIndex: 1 }}
         >
-          {leftLabels.map(({ input, labelY }) => {
+          {[
+            ...leftLabels.map((l) => ({ ...l, side: 'left' as const })),
+            ...rightLabels.map((l) => ({ ...l, side: 'right' as const })),
+          ].map(({ input, labelY, side }) => {
             const mapped = findMapping(input, mappings)
-            const active = isInputActive(input, activeInputs)
-            const color  = lineColor(input, mapped, active)
+            const key    = inputKey(input)
             const bx     = btnX(input)
             const by     = input.y
-            const op     = active ? 0.95 : mapped ? 0.65 : 0.3
-            return (
-              <g key={inputKey(input)} opacity={op}>
-                {/* Elbow: label edge → horizontal to ELBOW_L_X → diagonal to button */}
-                <polyline
-                  points={`${LBL_L_X},${labelY} ${ELBOW_L_X},${labelY} ${bx},${by}`}
-                  stroke={color} strokeWidth={active ? '0.45' : '0.28'}
-                  fill="none" strokeLinejoin="round"
-                />
-                <ellipse cx={bx} cy={by} rx={DOT_RX} ry={DOT_RY} fill={color} />
-              </g>
-            )
-          })}
+            const { color, opacity, sw } = svgStyle(input, mapped)
+            const pts = side === 'left'
+              ? `${LBL_L_X},${labelY} ${ELBOW_L_X},${labelY} ${bx},${by}`
+              : `${bx},${by} ${ELBOW_R_X},${labelY} ${LBL_R_X},${labelY}`
 
-          {rightLabels.map(({ input, labelY }) => {
-            const mapped = findMapping(input, mappings)
-            const active = isInputActive(input, activeInputs)
-            const color  = lineColor(input, mapped, active)
-            const bx     = btnX(input)
-            const by     = input.y
-            const op     = active ? 0.95 : mapped ? 0.65 : 0.3
             return (
-              <g key={inputKey(input)} opacity={op}>
-                {/* Elbow: button → horizontal at ELBOW_R_X → label edge */}
+              <g key={key} opacity={opacity}>
+                {/* Visible line + dot */}
+                <polyline points={pts} stroke={color} strokeWidth={sw} fill="none" strokeLinejoin="round" pointerEvents="none" />
+                <ellipse cx={bx} cy={by} rx={DOT_RX} ry={DOT_RY} fill={color} pointerEvents="none" />
+                {/* Transparent wide hit area for hover detection */}
                 <polyline
-                  points={`${bx},${by} ${ELBOW_R_X},${labelY} ${LBL_R_X},${labelY}`}
-                  stroke={color} strokeWidth={active ? '0.45' : '0.28'}
-                  fill="none" strokeLinejoin="round"
+                  points={pts}
+                  stroke="transparent"
+                  strokeWidth="3"
+                  fill="none"
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={() => setHoveredKey(key)}
+                  onMouseLeave={() => setHoveredKey(null)}
                 />
-                <ellipse cx={bx} cy={by} rx={DOT_RX} ry={DOT_RY} fill={color} />
               </g>
             )
           })}
@@ -144,10 +155,10 @@ export default function VisualMappingView({
         {/* ── Left labels (right-aligned, button name closest to controller) ── */}
         {leftLabels.map(({ input, labelY }) => {
           const mapped = findMapping(input, mappings)
-          const active = isInputActive(input, activeInputs)
+          const key    = inputKey(input)
           return (
             <div
-              key={inputKey(input)}
+              key={key}
               className="absolute"
               style={{ right: `${100 - LBL_L_X}%`, top: `${labelY}%`, transform: 'translateY(-50%)', zIndex: 2 }}
             >
@@ -155,13 +166,13 @@ export default function VisualMappingView({
                 disabled={isPlaying}
                 title={mapped ? `${input.name} → ${mapped.key_combo} (clique para remover)` : `Mapear ${input.name}`}
                 onClick={() => { if (isPlaying) return; if (mapped) onDeleteMapping(mapped); else onAddMapping(toCaptureResult(input)) }}
+                onMouseEnter={() => setHoveredKey(key)}
+                onMouseLeave={() => setHoveredKey(null)}
                 className={[
                   'flex items-center gap-1 text-[11px] font-mono whitespace-nowrap',
                   'rounded px-1 py-0.5 bg-slate-900/70',
                   'transition-colors duration-75 disabled:opacity-40',
-                  active ? 'text-yellow-400'
-                  : mapped ? 'text-blue-300 hover:text-red-400'
-                  : 'text-slate-600 hover:text-slate-300',
+                  labelClass(input, mapped),
                 ].join(' ')}
               >
                 {/* [key_combo] ◂ [name] — name is rightmost, closest to the controller */}
@@ -176,10 +187,10 @@ export default function VisualMappingView({
         {/* ── Right labels (left-aligned, button name closest to controller) ─ */}
         {rightLabels.map(({ input, labelY }) => {
           const mapped = findMapping(input, mappings)
-          const active = isInputActive(input, activeInputs)
+          const key    = inputKey(input)
           return (
             <div
-              key={inputKey(input)}
+              key={key}
               className="absolute"
               style={{ left: `${LBL_R_X}%`, top: `${labelY}%`, transform: 'translateY(-50%)', zIndex: 2 }}
             >
@@ -187,13 +198,13 @@ export default function VisualMappingView({
                 disabled={isPlaying}
                 title={mapped ? `${input.name} → ${mapped.key_combo} (clique para remover)` : `Mapear ${input.name}`}
                 onClick={() => { if (isPlaying) return; if (mapped) onDeleteMapping(mapped); else onAddMapping(toCaptureResult(input)) }}
+                onMouseEnter={() => setHoveredKey(key)}
+                onMouseLeave={() => setHoveredKey(null)}
                 className={[
                   'flex items-center gap-1 text-[11px] font-mono whitespace-nowrap',
                   'rounded px-1 py-0.5 bg-slate-900/70',
                   'transition-colors duration-75 disabled:opacity-40',
-                  active ? 'text-yellow-400'
-                  : mapped ? 'text-blue-300 hover:text-red-400'
-                  : 'text-slate-600 hover:text-slate-300',
+                  labelClass(input, mapped),
                 ].join(' ')}
               >
                 {/* [name] ▸ [key_combo] — name is leftmost, closest to the controller */}
