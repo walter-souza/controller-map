@@ -23,6 +23,10 @@ function handle<C extends keyof IpcInvokeMap>(
 }
 
 export function registerIpcHandlers(): void {
+  // Pre-open all connected joystick devices so SDL can resolve instance IDs
+  // before the renderer starts polling. This prevents SDL_JoystickFromInstanceID errors.
+  controllerService.getDevices()
+
   handle('controller:list', () => controllerService.getDevices())
 
   handle('controller:capture-start', (deviceId) => {

@@ -30,9 +30,34 @@ export class ControllerService {
   private _captureCallback: ButtonCaptureCallback | null = null
   private _captureInstance: SdlJoystickInstance | null = null
 
+  /**
+   * Tracker instances kept open so SDL can resolve SDL_JoystickFromInstanceID()
+   * for connected devices. @kmamal/sdl starts polling automatically on load,
+   * and any queued joystick events for unopened devices cause a fatal SDL error.
+   */
+  private _trackers = new Map<number, SdlJoystickInstance>()
+
   getDevices(): DeviceInfo[] {
     try {
-      return sdl.joystick.devices.map((d: SdlDevice) => ({
+      const devices = sdl.joystick.devices as SdlDevice[]
+      const currentIds = new Set(devices.map((d) => d.id))
+
+      // Close trackers for disconnected devices
+      for (const [id, inst] of this._trackers) {
+        if (!currentIds.has(id)) {
+          try { if (!inst.closed) inst.close() } catch { /* ignore */ }
+          this._trackers.delete(id)
+        }
+      }
+
+      // Open trackers for newly connected devices
+      for (const d of devices) {
+        if (!this._trackers.has(d.id)) {
+          try { this._trackers.set(d.id, sdl.joystick.openDevice(d)) } catch { /* ignore */ }
+        }
+      }
+
+      return devices.map((d) => ({
         id: d.id,
         name: d.name ?? `Controller ${d.id}`,
       }))
