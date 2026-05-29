@@ -1,5 +1,13 @@
 // Shared data models — mirroring Python models.py
 
+// A single controller input within a chord (button or axis only — not diagonal)
+export interface ChordInput {
+  type: 'button' | 'axis'
+  button_id: number       // button index or axis index
+  button_name: string
+  axis_direction?: number // +1 or -1 for axes; omit for buttons
+}
+
 export interface Mapping {
   button_id: number
   button_name: string
@@ -8,6 +16,8 @@ export interface Mapping {
   axis_direction: number   // +1 or -1 for axes; 0 for buttons
   axis_id_y: number | null // secondary axis for diagonals
   axis_direction_y: number
+  // Optional additional inputs that must all be held simultaneously
+  chord_inputs?: ChordInput[]
 }
 
 export interface RepeatSettings {

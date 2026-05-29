@@ -5,7 +5,7 @@
  * No separate thread needed — Node.js event loop handles timing.
  */
 
-import type { AngleMappingConfig, Mapping } from '../shared/models'
+import type { AngleMappingConfig, ChordInput, Mapping } from '../shared/models'
 import { controllerService } from './controller-service'
 import { keyboardService } from './keyboard-service'
 
@@ -24,6 +24,19 @@ interface ButtonMapping {
   mapping: Mapping
 }
 
+// Canonical input descriptor used for chord matching and hold-key generation
+interface ChordInputNorm {
+  type: 'button' | 'axis'
+  id: number
+  dir: number  // 0 for buttons
+}
+
+interface ChordMappingEntry {
+  holdKey: string            // unique canonical key for hold-repeat tracking
+  inputs: ChordInputNorm[]   // sorted: all inputs that must be active simultaneously
+  mapping: Mapping
+}
+
 export class Mapper {
   private _deviceId: number
   private _onDisconnect: (() => void) | undefined
@@ -39,6 +52,10 @@ export class Mapper {
   private _axisMappings = new Map<number, AxisMapping>()
   private _diagonalMappings: Mapping[] = []
   private _angleMappings: AngleMappingConfig[] = []
+  private _chordMappings: ChordMappingEntry[] = []
+  // Button IDs that appear in any chord — these are skipped by event-driven handler
+  // so chord logic (polling-based) has priority and prevents double-fires
+  private _chordButtonIds = new Set<number>()
 
   // Hold-repeat tracking
   private _heldKeys = new Set<string>()        // composite key string
@@ -106,6 +123,9 @@ export class Mapper {
   private _onButtonDown = (event: { button: number }) => {
     const entry = this._buttonMappings.get(event.button)
     if (!entry) return
+    // If this button is part of any chord, skip event-driven handling.
+    // Polling in _processButtons (after _processChords) will manage priority.
+    if (this._chordButtonIds.has(event.button)) return
     const key = `btn:${event.button}`
     if (this._heldKeys.has(key)) return // already tracked (shouldn't happen)
     const now = Date.now()
@@ -126,9 +146,30 @@ export class Mapper {
     this._buttonMappings.clear()
     this._axisMappings.clear()
     this._diagonalMappings = []
+    this._chordMappings = []
+    this._chordButtonIds.clear()
 
     for (const m of mappings) {
-      if (m.source_type === 'button') {
+      if (m.chord_inputs && m.chord_inputs.length > 0) {
+        // Build a canonical sorted input list: primary + extras
+        const primary: ChordInputNorm = {
+          type: m.source_type as 'button' | 'axis',
+          id: m.button_id,
+          dir: m.axis_direction,
+        }
+        const extras: ChordInputNorm[] = m.chord_inputs.map((c: ChordInput) => ({
+          type: c.type,
+          id: c.button_id,
+          dir: c.axis_direction ?? 0,
+        }))
+        const inputs = [primary, ...extras].sort(
+          (a, b) => a.type.localeCompare(b.type) || a.id - b.id || a.dir - b.dir,
+        )
+        const holdKey = 'chord:' + inputs.map((i) => `${i.type}:${i.id}:${i.dir}`).join('+')
+        this._chordMappings.push({ holdKey, inputs, mapping: m })
+        // Track all button IDs in this chord so event-driven handler can skip them
+        inputs.filter((i) => i.type === 'button').forEach((i) => this._chordButtonIds.add(i.id))
+      } else if (m.source_type === 'button') {
         this._buttonMappings.set(m.button_id, { mapping: m })
       } else if (m.source_type === 'axis') {
         const existing = this._axisMappings.get(m.button_id)
@@ -146,17 +187,65 @@ export class Mapper {
   private _tick(): void {
     controllerService.pollEvents()
 
-    this._processButtons()
+    // Chords are processed first; they return suppressed button IDs so single-button
+    // mappings don't double-fire when the button is part of an active chord.
+    const suppressedButtons = this._processChords()
+    this._processButtons(suppressedButtons)
     this._processAxes()
     this._processDiagonals()
     this._processAngleMappings()
   }
 
-  private _processButtons(): void {
+  // Returns the set of button IDs consumed by at least one fully-active chord.
+  private _processChords(): Set<number> {
+    const suppressed = new Set<number>()
+    if (!this._joystick) return suppressed
+
+    for (const entry of this._chordMappings) {
+      const allActive = entry.inputs.every((input) => {
+        if (input.type === 'button') {
+          return this._joystick!.buttons[input.id] === true
+        }
+        const val = this._joystick!.axes[input.id] ?? 0
+        return Math.abs(val) > AXIS_THRESHOLD && Math.sign(val) === input.dir
+      })
+
+      if (allActive) {
+        // Suppress all button members of this chord from single-button processing
+        entry.inputs.filter((i) => i.type === 'button').forEach((i) => suppressed.add(i.id))
+
+        const k = entry.holdKey
+        if (!this._heldKeys.has(k)) {
+          const now = Date.now()
+          this._heldKeys.add(k)
+          this._pressTime.set(k, now)
+          this._lastFire.set(k, now)
+          keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+        } else {
+          const now = Date.now()
+          const elapsed = (now - (this._pressTime.get(k) ?? now)) / 1000
+          const sinceLast = (now - (this._lastFire.get(k) ?? now)) / 1000
+          if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
+            this._lastFire.set(k, now)
+            keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+          }
+        }
+      } else if (this._heldKeys.has(entry.holdKey)) {
+        this._heldKeys.delete(entry.holdKey)
+        this._pressTime.delete(entry.holdKey)
+        this._lastFire.delete(entry.holdKey)
+      }
+    }
+
+    return suppressed
+  }
+
+  private _processButtons(suppressed: Set<number>): void {
     if (!this._joystick) return
     const buttons = this._joystick.buttons
 
     for (let btn = 0; btn < buttons.length; btn++) {
+      if (suppressed.has(btn)) continue  // chord is handling this button
       const entry = this._buttonMappings.get(btn)
       if (!entry) continue
       const pressed = buttons[btn] ?? false

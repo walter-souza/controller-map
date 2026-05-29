@@ -10,14 +10,22 @@ interface Props {
   onBack: () => void
 }
 
+// Returns a canonical identity string for a mapping (all inputs as sorted set)
+function mappingInputKey(m: Mapping): string {
+  const primary = `${m.source_type}:${m.button_id}:${m.axis_direction}`
+  const extras = (m.chord_inputs ?? [])
+    .map((c) => `${c.type}:${c.button_id}:${c.axis_direction ?? 0}`)
+    .sort()
+  return [primary, ...extras].sort().join('|')
+}
+
 function sameKey(a: Mapping, b: Mapping): boolean {
-  if (a.source_type !== b.source_type) return false
-  if (a.button_id !== b.button_id) return false
-  if (a.axis_direction !== b.axis_direction) return false
-  if (a.source_type === 'diagonal') {
-    return a.axis_id_y === b.axis_id_y && a.axis_direction_y === b.axis_direction_y
-  }
-  return true
+  return mappingInputKey(a) === mappingInputKey(b)
+}
+
+function controlLabel(m: Mapping): string {
+  const parts = [m.button_name, ...(m.chord_inputs ?? []).map((c) => c.button_name)]
+  return parts.join(' + ')
 }
 
 export default function MappingScreen({ device, onBack }: Props) {
@@ -183,7 +191,7 @@ export default function MappingScreen({ device, onBack }: Props) {
         )}
         {mappings.map((m, i) => (
           <div key={i} className="card px-4 py-3 flex items-center gap-3">
-            <span className="badge-ctrl">{m.button_name}</span>
+            <span className="badge-ctrl">{controlLabel(m)}</span>
             <span className="text-slate-300 text-sm">──►</span>
             <span className="badge-key">{m.key_combo}</span>
             <div className="flex-1" />
