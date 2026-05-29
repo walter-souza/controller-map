@@ -54,13 +54,29 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
     axis_direction: r.type === 'axis' ? r.axis_direction : undefined,
   }))
 
+  // Build a canonical sorted key from ALL inputs (primary + extras) so that
+  // X+Y and Y+X are treated as the same chord.
+  const inputToken = (type: string, buttonId: number, axisDir: number) =>
+    `${type}:${buttonId}:${axisDir}`
+
+  const newInputKey = primary
+    ? [
+        inputToken(primary.type, primary.button_id, primary.axis_direction ?? 0),
+        ...chordInputs.map((c) => inputToken(c.type, c.button_id, c.axis_direction ?? 0)),
+      ]
+        .sort()
+        .join('|')
+    : ''
+
   const isOverwrite = primary
     ? existingMappings.some((m) => {
-        if (m.source_type !== primary.type) return false
-        if (m.button_id !== primary.button_id) return false
-        const newChordKey = chordInputs.map((c) => `${c.type}:${c.button_id}:${c.axis_direction ?? 0}`).sort().join('|')
-        const existChordKey = (m.chord_inputs ?? []).map((c) => `${c.type}:${c.button_id}:${c.axis_direction ?? 0}`).sort().join('|')
-        return newChordKey === existChordKey
+        const existKey = [
+          inputToken(m.source_type, m.button_id, m.axis_direction ?? 0),
+          ...(m.chord_inputs ?? []).map((c) => inputToken(c.type, c.button_id, c.axis_direction ?? 0)),
+        ]
+          .sort()
+          .join('|')
+        return newInputKey === existKey
       })
     : false
 
