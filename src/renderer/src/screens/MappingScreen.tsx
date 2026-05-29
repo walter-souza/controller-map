@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AngleMappingConfig, DeviceInfo, Mapping, RepeatSettings } from '../../../shared/models'
+import type { AngleMappingConfig, CaptureResult, DeviceInfo, Mapping, RepeatSettings } from '../../../shared/models'
 import AddMappingDialog from '../components/AddMappingDialog'
 import AngleMappingDialog from '../components/AngleMappingDialog'
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog'
 import SettingsDialog from '../components/SettingsDialog'
+import VisualMappingView from '../components/VisualMappingView'
+import { detectProfile } from '../data/profiles'
+import type { ControllerProfile } from '../../../shared/models'
 
 interface Props {
   device: DeviceInfo
@@ -35,12 +38,17 @@ export default function MappingScreen({ device, onBack }: Props) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [pulse, setPulse] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [addPreset, setAddPreset] = useState<CaptureResult | undefined>(undefined)
   const [showAngleAdd, setShowAngleAdd] = useState(false)
   const [editingAngle, setEditingAngle] = useState<AngleMappingConfig | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null)
   const [deleteAngleId, setDeleteAngleId] = useState<string | null>(null)
   const pulseRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Profile detection: auto-identify known controllers by device name
+  const profile: ControllerProfile | null = detectProfile(device.name)
+  const [viewMode, setViewMode] = useState<'visual' | 'list'>(profile ? 'visual' : 'list')
 
   // Load data on mount
   useEffect(() => {
@@ -101,6 +109,21 @@ export default function MappingScreen({ device, onBack }: Props) {
     saveMappings(next)
   }
 
+  const openAddWithPreset = (preset: CaptureResult) => {
+    setAddPreset(preset)
+    setShowAdd(true)
+  }
+
+  const openAddFreeCapture = () => {
+    setAddPreset(undefined)
+    setShowAdd(true)
+  }
+
+  const handleDeleteMapping = (m: Mapping) => {
+    const idx = mappings.findIndex((x) => sameKey(x, m))
+    if (idx !== -1) setDeleteIndex(idx)
+  }
+
   const handleSettingsSaved = (s: RepeatSettings) => {
     setSettings(s)
     window.api.invoke('settings:save', s)
@@ -152,8 +175,25 @@ export default function MappingScreen({ device, onBack }: Props) {
           <span className={`text-xs font-medium ${statusTextColor}`}>{statusText}</span>
         </div>
         <div className="flex-1" />
+        {/* View mode toggle — only when profile detected */}
+        {profile && (
+          <div className="flex rounded-md border border-slate-200 overflow-hidden text-xs">
+            <button
+              onClick={() => setViewMode('visual')}
+              className={`px-3 py-1 transition-colors ${viewMode === 'visual' ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+            >
+              🎮 Visual
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-3 py-1 transition-colors ${viewMode === 'list' ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+            >
+              ☰ Lista
+            </button>
+          </div>
+        )}
         <button
-          onClick={() => setShowAdd(true)}
+          onClick={openAddFreeCapture}
           disabled={isPlaying}
           className="btn-ctrl text-xs disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -181,8 +221,17 @@ export default function MappingScreen({ device, onBack }: Props) {
         )}
       </div>
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+      {/* Main content: visual or list view */}
+      {profile && viewMode === 'visual' ? (
+        <VisualMappingView
+          profile={profile}
+          mappings={mappings}
+          isPlaying={isPlaying}
+          onAddMapping={openAddWithPreset}
+          onDeleteMapping={handleDeleteMapping}
+        />
+      ) : (
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
         {mappings.length === 0 && angleMappings.length === 0 && (
           <div className="text-center mt-10">
             <p className="text-slate-400 text-sm">Nenhum mapeamento ainda.</p>
@@ -237,18 +286,24 @@ export default function MappingScreen({ device, onBack }: Props) {
             ))}
           </>
         )}
-      </div>
+        </div>
+      )}
 
       {/* Dialogs */}
       {showAdd && (
         <AddMappingDialog
           deviceId={device.id}
           existingMappings={mappings}
+          presetInput={addPreset}
           onConfirm={(m) => {
             handleMappingAdded(m)
             setShowAdd(false)
+            setAddPreset(undefined)
           }}
-          onCancel={() => setShowAdd(false)}
+          onCancel={() => {
+            setShowAdd(false)
+            setAddPreset(undefined)
+          }}
         />
       )}
       {(showAngleAdd || editingAngle) && (

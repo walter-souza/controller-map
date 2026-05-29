@@ -55,6 +55,35 @@ export interface AngleMappingConfig {
   regions: AngleRegion[] // region[i] spans nodes[i].angle → nodes[(i+1)%N].angle
 }
 
+// Controller profile system — for known controllers with visual mapping UI
+
+export interface ControllerButtonDef {
+  type: 'button'
+  id: number        // SDL button_id
+  name: string      // Display name: "A", "L1", "D-Up"
+  x: number         // % from left (0-100) relative to profile image
+  y: number         // % from top (0-100) relative to profile image
+}
+
+export interface ControllerAxisDef {
+  type: 'axis'
+  axis_id: number   // SDL axis index
+  direction: 1 | -1 // +1 or -1
+  name: string      // Display name: "L2", "R2"
+  x: number
+  y: number
+}
+
+export type ControllerInputDef = ControllerButtonDef | ControllerAxisDef
+
+export interface ControllerProfile {
+  id: string
+  name: string
+  namePatterns: string[]  // case-insensitive substrings matched against device name
+  imageUrl: string        // import URL (from renderer assets)
+  inputs: ControllerInputDef[]
+}
+
 // Controller capture result
 export type CaptureResult =
   | { type: 'button'; button_id: number; button_name: string }
