@@ -14,30 +14,66 @@ const COLORS = [
   '#a855f7', '#06b6d4', '#ec4899', '#84cc16',
 ]
 
-function createDefault(): AngleMappingConfig {
+type Preset = '4-wasd' | '8-wasdqezc' | 'custom'
+
+function makeNodes(angles: number[]) {
+  return angles.map((angle) => ({ id: crypto.randomUUID(), angle }))
+}
+
+function makeRegions(combos: string[]) {
+  return combos.map((key_combo) => ({ id: crypto.randomUUID(), key_combo }))
+}
+
+function createFromPreset(preset: Preset, existingId?: string): AngleMappingConfig {
+  const id = existingId ?? crypto.randomUUID()
+  const base = { id, axis_x: 0, axis_y: 1, deadzone: 0.2 }
+
+  if (preset === '4-wasd') {
+    // 4 regions: W=top, A=left, S=bottom, D=right
+    return {
+      ...base,
+      nodes: makeNodes([45, 135, 225, 315]),
+      regions: makeRegions(['w', 'a', 's', 'd']),
+    }
+  }
+
+  if (preset === '8-wasdqezc') {
+    // 8 regions at 45° intervals; boundary midpoints at multiples of 45° - 22.5°
+    // Region centers: E=upper-right(45°), W=up(90°), Q=upper-left(135°),
+    //   A=left(180°), Z=lower-left(225°), X=down(270°), C=lower-right(315°), D=right(0°)
+    return {
+      ...base,
+      nodes: makeNodes([22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5]),
+      regions: makeRegions(['e', 'w', 'q', 'a', 'z', 'x', 'c', 'd']),
+    }
+  }
+
+  // custom — blank single region
   return {
-    id: crypto.randomUUID(),
-    axis_x: 0,
-    axis_y: 1,
-    deadzone: 0.2,
-    nodes: [
-      { id: crypto.randomUUID(), angle: 45 },
-      { id: crypto.randomUUID(), angle: 135 },
-      { id: crypto.randomUUID(), angle: 225 },
-      { id: crypto.randomUUID(), angle: 315 },
-    ],
-    regions: [
-      { id: crypto.randomUUID(), key_combo: 'w' },
-      { id: crypto.randomUUID(), key_combo: 'a' },
-      { id: crypto.randomUUID(), key_combo: 's' },
-      { id: crypto.randomUUID(), key_combo: 'd' },
-    ],
+    ...base,
+    nodes: makeNodes([0]),
+    regions: makeRegions(['']),
   }
 }
 
+function detectPreset(cfg: AngleMappingConfig): Preset {
+  const combos = cfg.regions.map((r) => r.key_combo).join(',')
+  if (combos === 'w,a,s,d') return '4-wasd'
+  if (combos === 'e,w,q,a,z,x,c,d') return '8-wasdqezc'
+  return 'custom'
+}
+
 export default function AngleMappingDialog({ initial, onConfirm, onCancel }: Props) {
-  const [config, setConfig] = useState<AngleMappingConfig>(initial ?? createDefault())
+  const [config, setConfig] = useState<AngleMappingConfig>(initial ?? createFromPreset('4-wasd'))
+  const [preset, setPreset] = useState<Preset>(initial ? detectPreset(initial) : '4-wasd')
   const [capturingIdx, setCapturingIdx] = useState<number | null>(null)
+
+  const applyPreset = (p: Preset) => {
+    setPreset(p)
+    if (p !== 'custom') {
+      setConfig((prev) => createFromPreset(p, prev.id))
+    }
+  }
 
   // Keyboard capture for a specific region
   useEffect(() => {
@@ -63,6 +99,7 @@ export default function AngleMappingDialog({ initial, onConfirm, onCancel }: Pro
   }, [capturingIdx])
 
   const addRegion = () => {
+    setPreset('custom')
     const n = config.nodes.length
     if (n === 0) {
       setConfig((prev) => ({
@@ -99,6 +136,7 @@ export default function AngleMappingDialog({ initial, onConfirm, onCancel }: Pro
 
   const removeRegion = (idx: number) => {
     if (config.nodes.length <= 1) return
+    setPreset('custom')
     const newNodes = config.nodes.filter((_, i) => i !== idx)
     const newRegions = config.regions.filter((_, i) => i !== idx)
     setConfig((prev) => ({ ...prev, nodes: newNodes, regions: newRegions }))
@@ -109,6 +147,32 @@ export default function AngleMappingDialog({ initial, onConfirm, onCancel }: Pro
   return (
     <Modal title="Mapeamento por Ângulo" onClose={onCancel}>
       <div className="flex flex-col gap-4">
+        {/* Preset selector — shown only when creating new (no initial) */}
+        {!initial && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 flex-shrink-0">Preset</span>
+            {(
+              [
+                { value: '4-wasd', label: '4 dir. — WASD' },
+                { value: '8-wasdqezc', label: '8 dir. — QWEADZXC' },
+                { value: 'custom', label: 'Personalizado' },
+              ] as const
+            ).map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => applyPreset(value)}
+                className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                  preset === value
+                    ? 'bg-slate-800 text-white border-slate-800'
+                    : 'border-slate-200 text-slate-500 hover:border-slate-400'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Axis / deadzone config */}
         <div className="flex items-center gap-4 text-xs">
           <label className="flex items-center gap-1.5">
