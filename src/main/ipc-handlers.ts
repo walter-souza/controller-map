@@ -8,6 +8,33 @@ import * as persistence from './persistence'
 let activeMapper: Mapper | null = null
 let webContents: WebContents | null = null
 
+// Suppress keyboard shortcuts (e.g. Ctrl+W closes window) while capturing keys.
+// Electron fires 'before-input-event' before any default handling occurs.
+type InputEvent = Parameters<Parameters<WebContents['on']>[1]>[1]
+let _suppressInputHandler: ((event: Electron.Event, input: InputEvent) => void) | null = null
+
+function startInputSuppression(): void {
+  if (!webContents || _suppressInputHandler) return
+  _suppressInputHandler = (event, input) => {
+    if (input.type !== 'keyDown') return
+    // Block shortcuts that could close or disrupt the window during capture
+    const ctrl = input.control || input.meta
+    if (ctrl && ['w', 'q', 'r', 'n', 't'].includes(input.key.toLowerCase())) {
+      event.preventDefault()
+    }
+    if (input.key === 'F5' || (ctrl && input.key === 'F5')) {
+      event.preventDefault()
+    }
+  }
+  webContents.on('before-input-event', _suppressInputHandler)
+}
+
+function stopInputSuppression(): void {
+  if (!webContents || !_suppressInputHandler) return
+  webContents.off('before-input-event', _suppressInputHandler)
+  _suppressInputHandler = null
+}
+
 export function setWebContents(wc: WebContents): void {
   webContents = wc
 }
@@ -38,12 +65,17 @@ export function registerIpcHandlers(): void {
   handle('controller:capture-stop', () => controllerService.stopCapture())
 
   handle('keyboard:capture-start', () => {
+    startInputSuppression()
     keyboardService.startCapture((combo) => {
+      stopInputSuppression()
       webContents?.send('keyboard:key-captured', combo)
     })
   })
 
-  handle('keyboard:capture-stop', () => keyboardService.stopCapture())
+  handle('keyboard:capture-stop', () => {
+    stopInputSuppression()
+    keyboardService.stopCapture()
+  })
 
   handle('mapper:start', (deviceId, mappings, settings, angleMappings) => {
     if (activeMapper) {
