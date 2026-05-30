@@ -1,0 +1,17 @@
+# AI Coding Assistant Guidelines & Workspace Rules
+
+This file defines the specific preferences, rules, and workflows requested by the repository owner for any AI assistant working on this codebase.
+
+## 1. Git & Commit Workflow
+- **Commit Messages:** 
+  - Always use **English**.
+  - Always follow the **Semantic Commits** standard (e.g. `feat(ui): ...`, `fix(keyboard): ...`, `style(ui): ...`).
+  - Keep messages **extremely simple, objective, and minimalist**. Avoid verbose explanations; be as direct and concise as possible.
+- **Commit Control:**
+  - **NEVER** run `git commit` automatically or after implementing changes.
+  - Keep all code changes staged (`git add`) or unstaged in the local workspace.
+  - Only execute a commit when the user explicitly requests it or inputs the conversational command `!commit` (e.g., `!commit` or `!commit "custom message"`).
+
+## 2. Keyboard & Mapping UI Guidelines
+- **Key Representation:**
+  - All keyboard keys, button badges, and mapping tags in the visual layout and user interface MUST represent keyboard characters in **uppercase** (e.g., `A, W, S, D, SPACE, CTRL` instead of `a, w, s, d`).
