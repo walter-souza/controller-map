@@ -204,7 +204,7 @@ export default function AngleMappingDialog({ initial, onConfirm, onCancel }: Pro
             <input
               type="range"
               min={0.05}
-              max={0.5}
+              max={0.9}
               step={0.05}
               value={config.deadzone}
               onChange={(e) => setConfig((p) => ({ ...p, deadzone: Number(e.target.value) }))}
