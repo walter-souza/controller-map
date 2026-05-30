@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AngleMappingConfig, CaptureResult, DeviceInfo, Mapping, MappingProfile, RepeatSettings } from '../../../shared/models'
+import type { AngleMappingConfig, CaptureResult, DeviceInfo, Mapping, MappingProfile, RepeatSettings, StickDef } from '../../../shared/models'
 import AddMappingDialog from '../components/AddMappingDialog'
 import AngleMappingDialog from '../components/AngleMappingDialog'
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog'
@@ -73,6 +73,7 @@ export default function MappingScreen({ device, onBack }: Props) {
   const [showSettings, setShowSettings] = useState(false)
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null)
   const [deleteAngleId, setDeleteAngleId] = useState<string | null>(null)
+  const [pendingAngleStick, setPendingAngleStick] = useState<StickDef | null>(null)
   const pulseRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Profile detection: auto-identify known controllers by device name
@@ -427,7 +428,7 @@ export default function MappingScreen({ device, onBack }: Props) {
           + Botão
         </button>
         <button
-          onClick={() => setShowAngleAdd(true)}
+          onClick={() => { setPendingAngleStick(null); setShowAngleAdd(true) }}
           disabled={isPlaying}
           className="btn-ctrl text-xs disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -463,24 +464,12 @@ export default function MappingScreen({ device, onBack }: Props) {
             const existing = angleMappings.find(
               (a) => a.axis_x === stick.axis_x && a.axis_y === stick.axis_y
             )
-            setEditingAngle(existing ?? {
-              id: crypto.randomUUID(),
-              axis_x: stick.axis_x,
-              axis_y: stick.axis_y,
-              deadzone: 0.2,
-              nodes: [
-                { id: crypto.randomUUID(), angle: 45 },
-                { id: crypto.randomUUID(), angle: 135 },
-                { id: crypto.randomUUID(), angle: 225 },
-                { id: crypto.randomUUID(), angle: 315 },
-              ],
-              regions: [
-                { id: crypto.randomUUID(), key_combo: '' },
-                { id: crypto.randomUUID(), key_combo: '' },
-                { id: crypto.randomUUID(), key_combo: '' },
-                { id: crypto.randomUUID(), key_combo: '' },
-              ],
-            })
+            if (existing) {
+              setEditingAngle(existing)
+            } else {
+              setPendingAngleStick(stick)
+              setShowAngleAdd(true)
+            }
           }}
         />
       ) : (
@@ -565,8 +554,10 @@ export default function MappingScreen({ device, onBack }: Props) {
       {(showAngleAdd || editingAngle) && (
         <AngleMappingDialog
           initial={editingAngle ?? undefined}
-          onConfirm={handleAngleSaved}
-          onCancel={() => { setShowAngleAdd(false); setEditingAngle(null) }}
+          defaultAxisX={pendingAngleStick?.axis_x}
+          defaultAxisY={pendingAngleStick?.axis_y}
+          onConfirm={(cfg) => { handleAngleSaved(cfg); setPendingAngleStick(null) }}
+          onCancel={() => { setShowAngleAdd(false); setEditingAngle(null); setPendingAngleStick(null) }}
         />
       )}
       {deleteIndex !== null && (

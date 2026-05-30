@@ -5,6 +5,8 @@ import AngleMappingEditor from './AngleMappingEditor'
 
 interface Props {
   initial?: AngleMappingConfig
+  defaultAxisX?: number
+  defaultAxisY?: number
   onConfirm: (config: AngleMappingConfig) => void
   onCancel: () => void
 }
@@ -63,15 +65,28 @@ function detectPreset(cfg: AngleMappingConfig): Preset {
   return 'custom'
 }
 
-export default function AngleMappingDialog({ initial, onConfirm, onCancel }: Props) {
-  const [config, setConfig] = useState<AngleMappingConfig>(initial ?? createFromPreset('4-wasd'))
+export default function AngleMappingDialog({ initial, defaultAxisX, defaultAxisY, onConfirm, onCancel }: Props) {
+  const [config, setConfig] = useState<AngleMappingConfig>(() => {
+    if (initial) return initial
+    const cfg = createFromPreset('4-wasd')
+    return {
+      ...cfg,
+      axis_x: defaultAxisX ?? cfg.axis_x,
+      axis_y: defaultAxisY ?? cfg.axis_y,
+    }
+  })
   const [preset, setPreset] = useState<Preset>(initial ? detectPreset(initial) : '4-wasd')
   const [capturingIdx, setCapturingIdx] = useState<number | null>(null)
 
   const applyPreset = (p: Preset) => {
     setPreset(p)
     if (p !== 'custom') {
-      setConfig((prev) => createFromPreset(p, prev.id))
+      setConfig((prev) => ({
+        ...createFromPreset(p, prev.id),
+        axis_x: prev.axis_x,
+        axis_y: prev.axis_y,
+        deadzone: prev.deadzone,
+      }))
     }
   }
 
