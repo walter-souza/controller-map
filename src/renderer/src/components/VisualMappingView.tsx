@@ -331,26 +331,26 @@ export default function VisualMappingView({
     const name = input.name
 
     if (name === 'L1' || name === 'R1') {
-      const w = 17.5, h = 4.25, rx = 2.125
-      shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={rx} />
+      const w = 10.6, h = 6.5, rx = 1, ry = 3
+      shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={ry} />
     } else if (name === 'L2' || name === 'R2') {
-      const w = 18.0, h = 7.0, rx = 3.5
-      shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={rx} />
+      const w = 10.6, h = 10.5, rx = 2, ry = 5
+      shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={ry} />
     } else if (name === 'A' || name === 'B' || name === 'X' || name === 'Y') {
-      const rx = 3.0, ry = 4.6
+      const rx = 1.75, ry = 4.5
       shape = <ellipse cx={bx} cy={by} rx={rx} ry={ry} />
     } else if (name === 'L3' || name === 'R3') {
-      const rx = 4.0, ry = 6.1
+      const rx = 2.25, ry = 6
       shape = <ellipse cx={bx} cy={by} rx={rx} ry={ry} />
     } else if (name === 'Select' || name === 'Start') {
-      const w = 5.5, h = 2.7, rx = 1.35
-      shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={rx} />
+      const w = 3, h = 3.5, rx = 1.0, ry = 1.75
+      shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={ry} />
     } else if (name === 'Home') {
-      const rx = 2.5, ry = 3.85
+      const rx = 1.5, ry = 3.85
       shape = <ellipse cx={bx} cy={by} rx={rx} ry={ry} />
     } else {
       // D-Pad buttons
-      const w = 3.5, h = 5.3, rx = 1.0
+      const w = 2.5, h = 6, rx = 1.0
       shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={rx} />
     }
 

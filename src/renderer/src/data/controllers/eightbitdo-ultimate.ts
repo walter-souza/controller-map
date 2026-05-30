@@ -15,23 +15,23 @@ export const eightbitdoUltimate: ControllerProfile = {
   ],
   inputs: [
     // ── Shoulder buttons ──────────────────────────────────────────────────
-    { type: 'axis',   axis_id: 4, direction:  1, name: 'L2',     x: 20.75, y: 11.5 },
-    { type: 'button', id: 4,                     name: 'L1',     x: 21.25, y: 21.5 },
-    { type: 'axis',   axis_id: 5, direction:  1, name: 'R2',     x: 79.25, y: 11.5 },
-    { type: 'button', id: 5,                     name: 'R1',     x: 78.75, y: 21.5 },
+    { type: 'axis',   axis_id: 4, direction:  1, name: 'L2',     x: 20.25, y: 13.0 },
+    { type: 'button', id: 4,                     name: 'L1',     x: 20.25, y: 22.5 },
+    { type: 'axis',   axis_id: 5, direction:  1, name: 'R2',     x: 79.75, y: 13.0 },
+    { type: 'button', id: 5,                     name: 'R1',     x: 79.5,  y: 22.5 },
 
     // ── Left stick axes ───────────────────────────────────────────────────
     { type: 'axis',   axis_id: 1, direction: -1, name: 'LS↑',   x: 26.25, y: 36.3 },
     { type: 'axis',   axis_id: 0, direction: -1, name: 'LS←',   x: 19.0,  y: 44.2 },
-    { type: 'button', id: 8,                     name: 'L3',     x: 26.25, y: 44.2 },
+    { type: 'button', id: 8,                     name: 'L3',    x: 26.25, y: 44.2 },
     { type: 'axis',   axis_id: 0, direction:  1, name: 'LS→',   x: 33.5,  y: 44.2 },
     { type: 'axis',   axis_id: 1, direction:  1, name: 'LS↓',   x: 26.25, y: 52.1 },
 
     // ── D-pad ─────────────────────────────────────────────────────────────
-    { type: 'button', id: 11,                    name: 'D-Up',   x: 38.75, y: 52.3 },
-    { type: 'button', id: 12,                    name: 'D-Down', x: 38.75, y: 70.8 },
-    { type: 'button', id: 13,                    name: 'D-Left', x: 32.0,  y: 62.3 },
-    { type: 'button', id: 14,                    name: 'D-Right',x: 44.75, y: 62.3 },
+    { type: 'button', id: 11,                    name: 'D-Up',   x: 38.75, y: 55.5 },
+    { type: 'button', id: 12,                    name: 'D-Down', x: 38.75, y: 69.0 },
+    { type: 'button', id: 13,                    name: 'D-Left', x: 34.75, y: 62.3 },
+    { type: 'button', id: 14,                    name: 'D-Right',x: 43.0, y: 62.3 },
 
     // ── Center buttons ────────────────────────────────────────────────────
     { type: 'button', id: 6,                     name: 'Select', x: 42.75, y: 40.2 },
