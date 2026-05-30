@@ -151,10 +151,14 @@ export async function importProfileFromFile(): Promise<MappingProfile | null> {
 
   if (!isValidExportFile(parsed)) return null
 
+  const filePath = result.filePaths[0]
+  const fileName = filePath.replace(/\\/g, '/').split('/').pop() ?? ''
+  const nameFromFile = fileName.replace(/\.json$/i, '').trim() || (parsed as ExportFile).profile.name
+
   const file = parsed as ExportFile
   return {
     id: crypto.randomUUID(),
-    name: file.profile.name,
+    name: nameFromFile,
     mappings: file.profile.mappings,
     angleMappings: file.profile.angleMappings,
     createdAt: new Date().toISOString(),
