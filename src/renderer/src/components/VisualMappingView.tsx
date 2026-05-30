@@ -61,6 +61,20 @@ function inputKey(input: ControllerInputDef): string {
   return input.type === 'button' ? `btn-${input.id}` : `axis-${input.axis_id}-${input.direction}`
 }
 
+function resolveButtonName(
+  profile: ControllerProfile,
+  sourceType: string,
+  buttonId: number,
+  axisDirection?: number,
+): string {
+  const input = profile.inputs.find((i) => {
+    if (sourceType === 'button' && i.type === 'button') return i.id === buttonId
+    if (i.type === 'axis') return i.axis_id === buttonId && i.direction === axisDirection
+    return false
+  })
+  return input?.name ?? (sourceType === 'button' ? `Botão ${buttonId}` : `Eixo ${buttonId}`)
+}
+
 function btnX(input: ControllerInputDef): number {
   return IMG_LEFT + input.x * (IMG_WIDTH / 100)
 }
@@ -446,7 +460,12 @@ export default function VisualMappingView({
           ) : (
             <div className="space-y-1.5">
               {chordMappings.map((m, i) => {
-                const label = [m.button_name, ...(m.chord_inputs ?? []).map((c) => c.button_name)].join(' + ')
+                const label = [
+                  resolveButtonName(profile, m.source_type, m.button_id, m.axis_direction || undefined),
+                  ...(m.chord_inputs ?? []).map((c) =>
+                    resolveButtonName(profile, c.type, c.button_id, c.axis_direction),
+                  ),
+                ].join(' + ')
                 return (
                   <div key={i} className="card px-2 py-1.5 flex items-center gap-1.5 text-xs">
                     <span className="badge-ctrl text-[10px] flex-shrink-0 max-w-[80px] truncate">{label}</span>
@@ -463,60 +482,6 @@ export default function VisualMappingView({
             </div>
           )}
         </div>
-
-        {/* Analógicos */}
-        {profile.sticks && profile.sticks.length > 0 && (
-          <div>
-            <p className="text-[10px] text-slate-400 mb-2 font-semibold tracking-widest uppercase">Analógicos</p>
-            <div className="space-y-3">
-              {profile.sticks.map((stick) => {
-                const stickInputs = profile.inputs.filter(
-                  (i): i is ControllerAxisDef =>
-                    i.type === 'axis' && (i.axis_id === stick.axis_x || i.axis_id === stick.axis_y)
-                )
-                return (
-                  <div key={stick.name}>
-                    <p className="text-[10px] text-slate-500 mb-1 font-mono">{stick.name}</p>
-                    <div className="space-y-0.5">
-                      {stickInputs.map((input) => {
-                        const mapped = findMapping(input, mappings)
-                        const active = isInputActive(input, activeInputs)
-                        const arrow  = input.name.slice(-1)
-                        return (
-                          <div
-                            key={inputKey(input)}
-                            className={[
-                              'flex items-center gap-1.5 text-xs rounded px-1.5 py-1 transition-colors',
-                              active ? 'bg-yellow-400/10' : 'hover:bg-slate-800/60',
-                            ].join(' ')}
-                          >
-                            <span className="text-slate-300 w-4 text-center font-mono">{arrow}</span>
-                            {mapped ? (
-                              <>
-                                <span className="badge-key text-[10px] flex-1 min-w-0 truncate">{mapped.key_combo}</span>
-                                <button
-                                  onClick={() => !isPlaying && onDeleteMapping(mapped)}
-                                  disabled={isPlaying}
-                                  className="btn-ghost text-red-400 hover:text-red-600 text-[10px] disabled:opacity-40 flex-shrink-0"
-                                >✕</button>
-                              </>
-                            ) : (
-                              <button
-                                onClick={() => !isPlaying && onAddMapping(toCaptureResult(input))}
-                                disabled={isPlaying}
-                                className="text-slate-600 hover:text-slate-300 text-[10px] disabled:opacity-40"
-                              >+ mapear</button>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

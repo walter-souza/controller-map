@@ -26,9 +26,26 @@ function sameKey(a: Mapping, b: Mapping): boolean {
   return mappingInputKey(a) === mappingInputKey(b)
 }
 
-function controlLabel(m: Mapping): string {
-  const parts = [m.button_name, ...(m.chord_inputs ?? []).map((c) => c.button_name)]
-  return parts.join(' + ')
+function resolveButtonName(
+  profile: ControllerProfile,
+  sourceType: string,
+  buttonId: number,
+  axisDirection?: number,
+): string {
+  const input = profile.inputs.find((i) => {
+    if (sourceType === 'button' && i.type === 'button') return i.id === buttonId
+    if (i.type === 'axis') return i.axis_id === buttonId && i.direction === axisDirection
+    return false
+  })
+  return input?.name ?? (sourceType === 'button' ? `Botão ${buttonId}` : `Eixo ${buttonId}`)
+}
+
+function controlLabel(m: Mapping, profile: ControllerProfile): string {
+  const primary = resolveButtonName(profile, m.source_type, m.button_id, m.axis_direction || undefined)
+  const extras = (m.chord_inputs ?? []).map((c) =>
+    resolveButtonName(profile, c.type, c.button_id, c.axis_direction),
+  )
+  return [primary, ...extras].join(' + ')
 }
 
 export default function MappingScreen({ device, onBack }: Props) {
@@ -316,7 +333,7 @@ export default function MappingScreen({ device, onBack }: Props) {
         )}
         {mappings.map((m, i) => (
           <div key={i} className="card px-4 py-3 flex items-center gap-3">
-            <span className="badge-ctrl">{controlLabel(m)}</span>
+            <span className="badge-ctrl">{controlLabel(m, profile)}</span>
             <span className="text-slate-300 text-sm">──►</span>
             <span className="badge-key">{m.key_combo}</span>
             <div className="flex-1" />
@@ -371,6 +388,9 @@ export default function MappingScreen({ device, onBack }: Props) {
           deviceId={device.id}
           existingMappings={mappings}
           presetInput={addPreset}
+          resolveInputName={(type, buttonId, axisDirection) =>
+            resolveButtonName(profile, type, buttonId, axisDirection)
+          }
           onConfirm={(m) => {
             handleMappingAdded(m)
             setShowAdd(false)
