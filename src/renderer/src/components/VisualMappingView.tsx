@@ -280,8 +280,14 @@ export default function VisualMappingView({
     (i) => i.type === 'button' || !stickAxisIds.has((i as ControllerAxisDef).axis_id)
   )
 
-  const leftLabels  = spreadLabels(guideInputs.filter((i) => i.x < 50))
-  const rightLabels = spreadLabels(guideInputs.filter((i) => i.x >= 50))
+  const isCentralButton = (input: ControllerInputDef) =>
+    input.name === 'Select' || input.name === 'Home' || input.name === 'Start'
+
+  const centralInputs = guideInputs.filter(isCentralButton)
+  const nonCentralInputs = guideInputs.filter((i) => !isCentralButton(i))
+
+  const leftLabels  = spreadLabels(nonCentralInputs.filter((i) => i.x < 50))
+  const rightLabels = spreadLabels(nonCentralInputs.filter((i) => i.x >= 50))
   const chordMappings = mappings.filter((m) => m.chord_inputs?.length)
 
   // ── SVG style helpers ───────────────────────────────────────────────────────
@@ -386,6 +392,65 @@ export default function VisualMappingView({
                   />
 
                   {/* Wide transparent interactive line for easier hovering */}
+                  <polyline
+                    points={pts}
+                    stroke="transparent"
+                    strokeWidth="3.5"
+                    fill="none"
+                    style={{ cursor: 'pointer' }}
+                    onMouseEnter={() => setHoveredKey(key)}
+                    onMouseLeave={() => setHoveredKey(null)}
+                  />
+                </g>
+              )
+            })}
+
+            {/* SVG guide lines for central buttons (pointing straight up) */}
+            {centralInputs.map((input) => {
+              const mapped = findMapping(input, mappings)
+              const key    = inputKey(input)
+              const bx     = btnX(input)
+              const by     = input.y
+              const { color, opacity, sw, glow } = svgStyle(input, mapped)
+              const labelY = 8.5
+              const pts = `${bx},${labelY} ${bx},${by}`
+              return (
+                <g key={key} opacity={opacity}>
+                  {/* Glow Underlay Line */}
+                  {(glow || mapped) && (
+                    <polyline
+                      points={pts}
+                      stroke={color}
+                      strokeWidth={Number(sw) * 3}
+                      opacity={glow ? 0.4 : 0.15}
+                      fill="none"
+                      filter="url(#line-glow)"
+                      pointerEvents="none"
+                    />
+                  )}
+                  {/* Sharp Core Line */}
+                  <polyline points={pts} stroke={color} strokeWidth={sw} fill="none" pointerEvents="none" />
+                  
+                  {/* Precision Target Anchor Dot */}
+                  <circle
+                    cx={bx}
+                    cy={by}
+                    r={1.2}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth="0.15"
+                    opacity={glow ? 0.8 : mapped ? 0.45 : 0.2}
+                    pointerEvents="none"
+                  />
+                  <circle
+                    cx={bx}
+                    cy={by}
+                    r={0.45}
+                    fill={color}
+                    pointerEvents="none"
+                  />
+
+                  {/* Wide transparent interactive line */}
                   <polyline
                     points={pts}
                     stroke="transparent"
@@ -514,6 +579,79 @@ export default function VisualMappingView({
                   <span
                     className={[
                       'px-1.5 py-0.5 rounded text-[9px] font-sans font-bold shadow-sm transition-all',
+                      mapped
+                        ? hovered
+                          ? 'bg-red-500/20 border border-red-500/40 text-red-300'
+                          : active
+                            ? 'bg-yellow-500/20 border border-yellow-500/40 text-yellow-300'
+                            : 'bg-blue-500/25 border border-blue-500/35 text-blue-300'
+                        : 'bg-slate-800/60 border border-slate-700/50 text-slate-500',
+                    ].join(' ')}
+                  >
+                    {mapped ? mapped.key_combo.toUpperCase() : 'LIVRE'}
+                  </span>
+                </button>
+              </div>
+            )
+          })}
+
+          {/* Top labels (for the 3 central buttons) */}
+          {centralInputs.map((input) => {
+            const mapped = findMapping(input, mappings)
+            const key    = inputKey(input)
+            const active = isInputActive(input, activeInputs)
+            const hovered = hoveredKey === key
+            const bx     = btnX(input)
+            const labelY = 8.5
+            return (
+              <div
+                key={key}
+                className="absolute transition-all duration-150"
+                style={{
+                  left: `${bx}%`,
+                  top: `${labelY}%`,
+                  transform: 'translate(-50%, -50%)',
+                  zIndex: hovered ? 10 : 2,
+                }}
+              >
+                <button
+                  disabled={isPlaying}
+                  title={mapped ? `${input.name} → ${mapped.key_combo} (clique para remover)` : `Mapear ${input.name}`}
+                  onClick={() => { if (isPlaying) return; if (mapped) onDeleteMapping(mapped); else onAddMapping(toCaptureResult(input)) }}
+                  onMouseEnter={() => setHoveredKey(key)}
+                  onMouseLeave={() => setHoveredKey(null)}
+                  className={[
+                    'flex flex-col items-center gap-1 text-[10px] font-mono whitespace-nowrap',
+                    'rounded-md border px-2 py-1 shadow-md transition-all duration-150 disabled:opacity-40 backdrop-blur-md',
+                    labelClass(input, mapped),
+                    hovered ? 'scale-105 shadow-lg' : 'scale-100',
+                  ].join(' ')}
+                  style={{ minWidth: '54px' }}
+                >
+                  {/* Controller Button Label */}
+                  <span
+                    className={[
+                      'font-sans text-[10px] font-semibold tracking-wider transition-colors',
+                      active ? 'text-yellow-300' : hovered ? 'text-slate-100' : mapped ? 'text-slate-300' : 'text-slate-400',
+                    ].join(' ')}
+                  >
+                    {input.name}
+                  </span>
+
+                  {/* Separator (pointing down) */}
+                  <span
+                    className={[
+                      'text-[8px] transition-colors leading-none',
+                      hovered && mapped ? 'text-red-400 font-bold' : active ? 'text-yellow-400' : 'text-slate-600',
+                    ].join(' ')}
+                  >
+                    {hovered && mapped ? '✕' : '▾'}
+                  </span>
+
+                  {/* Mapped Key / Keycap */}
+                  <span
+                    className={[
+                      'px-1.5 py-0.5 rounded text-[8px] font-sans font-bold shadow-sm transition-all',
                       mapped
                         ? hovered
                           ? 'bg-red-500/20 border border-red-500/40 text-red-300'
