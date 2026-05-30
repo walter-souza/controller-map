@@ -58,7 +58,7 @@ export default function MappingScreen({ device, onBack }: Props) {
 
   // Real-time input monitor — active when visual view is visible
   useEffect(() => {
-    if (!profile || viewMode !== 'visual') {
+    if (viewMode !== 'visual') {
       setActiveInputs(new Set())
       setAxisValues({})
       axisValuesRef.current = {}
@@ -100,7 +100,7 @@ export default function MappingScreen({ device, onBack }: Props) {
       setAxisValues({})
       axisValuesRef.current = {}
     }
-  }, [profile, viewMode, device.id])
+  }, [viewMode, device.id])
 
   // Load data on mount
   useEffect(() => {
@@ -227,8 +227,7 @@ export default function MappingScreen({ device, onBack }: Props) {
           <span className={`text-xs font-medium ${statusTextColor}`}>{statusText}</span>
         </div>
         <div className="flex-1" />
-        {/* View mode toggle — only when profile detected */}
-        {profile && (
+        {/* View mode toggle — always available */}
           <div className="flex rounded-md border border-slate-200 overflow-hidden text-xs">
             <button
               onClick={() => setViewMode('visual')}
@@ -243,7 +242,6 @@ export default function MappingScreen({ device, onBack }: Props) {
               ☰ Lista
             </button>
           </div>
-        )}
         <button
           onClick={openAddFreeCapture}
           disabled={isPlaying}
