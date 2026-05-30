@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Map gamepad buttons to keyboard shortcuts",
   "main": "out/main/index.js",
-  "author": "",
+  "author": "walter-souza",
   "license": "MIT",
   "scripts": {
     "dev": "electron-vite dev",
@@ -11,6 +11,26 @@
     "preview": "electron-vite preview",
     "package": "npm run build && electron-builder",
     "lint": "eslint src --ext ts,tsx"
+  },
+  "build": {
+    "appId": "com.waltersouza.controllermap",
+    "productName": "Controller Map",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "artifactName": "controller-map-setup-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
+    }
   },
   "dependencies": {
     "@kmamal/sdl": "^0.11.13",
