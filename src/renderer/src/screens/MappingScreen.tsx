@@ -27,9 +27,26 @@ function sameKey(a: Mapping, b: Mapping): boolean {
   return mappingInputKey(a) === mappingInputKey(b)
 }
 
-function controlLabel(m: Mapping): string {
-  const parts = [m.button_name, ...(m.chord_inputs ?? []).map((c) => c.button_name)]
-  return parts.join(' + ')
+function resolveButtonName(
+  profile: ControllerProfile,
+  sourceType: string,
+  buttonId: number,
+  axisDirection?: number,
+): string {
+  const input = profile.inputs.find((i) => {
+    if (sourceType === 'button' && i.type === 'button') return i.id === buttonId
+    if (i.type === 'axis') return i.axis_id === buttonId && i.direction === axisDirection
+    return false
+  })
+  return input?.name ?? (sourceType === 'button' ? `Botão ${buttonId}` : `Eixo ${buttonId}`)
+}
+
+function controlLabel(m: Mapping, profile: ControllerProfile): string {
+  const primary = resolveButtonName(profile, m.source_type, m.button_id, m.axis_direction || undefined)
+  const extras = (m.chord_inputs ?? []).map((c) =>
+    resolveButtonName(profile, c.type, c.button_id, c.axis_direction),
+  )
+  return [primary, ...extras].join(' + ')
 }
 
 export default function MappingScreen({ device, onBack }: Props) {
@@ -62,11 +79,18 @@ export default function MappingScreen({ device, onBack }: Props) {
   const controllerProfile: ControllerProfile | null = detectProfile(device.name)
   const [viewMode, setViewMode] = useState<'visual' | 'list'>(controllerProfile ? 'visual' : 'list')
   const [activeInputs, setActiveInputs] = useState<Set<string>>(new Set())
+  // Raw axis values for smooth joystick pad visualization (dot position)
+  const [axisValues, setAxisValues] = useState<Record<number, number>>({})
+  // Ref + RAF for throttling axisValues state updates to 60fps
+  const axisValuesRef = useRef<Record<number, number>>({})
+  const axisRafRef = useRef<number | null>(null)
 
   // Real-time input monitor — active when visual view is visible
   useEffect(() => {
     if (!controllerProfile || viewMode !== 'visual') {
       setActiveInputs(new Set())
+      setAxisValues({})
+      axisValuesRef.current = {}
       return
     }
     window.api.invoke('controller:monitor-start', device.id)
@@ -78,6 +102,7 @@ export default function MappingScreen({ device, onBack }: Props) {
     })
     const offAxis = window.api.on('controller:axis-motion', ({ axis, value }) => {
       const THRESHOLD = 0.5
+      // Threshold-based activeInputs (drives sector highlight + guide line highlight)
       setActiveInputs((prev) => {
         const s = new Set(prev)
         s.delete(`a:${axis}:1`)
@@ -86,11 +111,23 @@ export default function MappingScreen({ device, onBack }: Props) {
         else if (value < -THRESHOLD) s.add(`a:${axis}:-1`)
         return s
       })
+      // Raw axis values via RAF-throttled state update (drives dot position)
+      axisValuesRef.current = { ...axisValuesRef.current, [axis]: value }
+      if (!axisRafRef.current) {
+        axisRafRef.current = requestAnimationFrame(() => {
+          setAxisValues({ ...axisValuesRef.current })
+          axisRafRef.current = null
+        })
+      }
     })
     return () => {
       offDown(); offUp(); offAxis()
+      if (axisRafRef.current) cancelAnimationFrame(axisRafRef.current)
+      axisRafRef.current = null
       window.api.invoke('controller:monitor-stop')
       setActiveInputs(new Set())
+      setAxisValues({})
+      axisValuesRef.current = {}
     }
   }, [controllerProfile, viewMode, device.id])
 
@@ -381,7 +418,6 @@ export default function MappingScreen({ device, onBack }: Props) {
               ☰ Lista
             </button>
           </div>
-        )}
         <button
           onClick={openAddFreeCapture}
           disabled={isPlaying}
@@ -416,10 +452,35 @@ export default function MappingScreen({ device, onBack }: Props) {
         <VisualMappingView
           profile={controllerProfile}
           mappings={mappings}
+          angleMappings={angleMappings}
           isPlaying={isPlaying}
           activeInputs={activeInputs}
+          axisValues={axisValues}
           onAddMapping={openAddWithPreset}
           onDeleteMapping={handleDeleteMapping}
+          onEditAngleMapping={(stick) => {
+            const existing = angleMappings.find(
+              (a) => a.axis_x === stick.axis_x && a.axis_y === stick.axis_y
+            )
+            setEditingAngle(existing ?? {
+              id: crypto.randomUUID(),
+              axis_x: stick.axis_x,
+              axis_y: stick.axis_y,
+              deadzone: 0.2,
+              nodes: [
+                { id: crypto.randomUUID(), angle: 45 },
+                { id: crypto.randomUUID(), angle: 135 },
+                { id: crypto.randomUUID(), angle: 225 },
+                { id: crypto.randomUUID(), angle: 315 },
+              ],
+              regions: [
+                { id: crypto.randomUUID(), key_combo: '' },
+                { id: crypto.randomUUID(), key_combo: '' },
+                { id: crypto.randomUUID(), key_combo: '' },
+                { id: crypto.randomUUID(), key_combo: '' },
+              ],
+            })
+          }}
         />
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -431,7 +492,7 @@ export default function MappingScreen({ device, onBack }: Props) {
         )}
         {mappings.map((m, i) => (
           <div key={i} className="card px-4 py-3 flex items-center gap-3">
-            <span className="badge-ctrl">{controlLabel(m)}</span>
+            <span className="badge-ctrl">{controlLabel(m, profile)}</span>
             <span className="text-slate-300 text-sm">──►</span>
             <span className="badge-key">{m.key_combo}</span>
             <div className="flex-1" />
@@ -486,6 +547,9 @@ export default function MappingScreen({ device, onBack }: Props) {
           deviceId={device.id}
           existingMappings={mappings}
           presetInput={addPreset}
+          resolveInputName={(type, buttonId, axisDirection) =>
+            resolveButtonName(profile, type, buttonId, axisDirection)
+          }
           onConfirm={(m) => {
             handleMappingAdded(m)
             setShowAdd(false)
