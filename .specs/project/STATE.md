@@ -49,6 +49,6 @@ _(nenhum)_
 
 ## Preferences
 
-- Commits em inglês com padrão Conventional Commits (semantic commit)
+- Commits em inglês, padrão semantic commit, mensagens curtas e objetivas (sem corpo)
 - Build verificado com `npm run build` (electron-vite build)
 - TypeScript errors verificados via build (projeto usa tsconfig composto, `tsc --noEmit` direto não funciona)
