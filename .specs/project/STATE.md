@@ -17,17 +17,24 @@ Implementada no `controller-service.ts`. Press: acumula botões por ~50ms antes 
 ### D5 — 8BitDo Ultimate como perfil fallback universal
 `detectProfile()` sempre retorna um `ControllerProfile` não-nulo. Controles desconhecidos recebem o layout visual do 8BitDo. IDs/mapeamentos funcionam independente do visual.
 
-### D6 — Persistência keyed por deviceId (número SDL)
-`electron-store` salva configs em `controller-map.json` em `AppData\Roaming\controller-map-electron\`. Chave é o `deviceId` numérico retornado pelo SDL.
+### D6 — Persistência migrada para perfis globais
+`electron-store` salva configs em `controller-map.json` em `AppData\Roaming\controller-map-electron\`. Estrutura anterior era keyed por `deviceId`; migrada para `profiles: MappingProfile[]` + `activeProfileId`. Migração automática ocorre em `ensureProfiles()` na primeira inicialização com store legado.
 
 ### D7 — Nomes de botões resolvidos do perfil em tempo de exibição
 `button_name` no `Mapping` pode conter "Botão 0" (legado). `resolveButtonName(profile, sourceType, buttonId, direction)` busca o nome real do perfil. Aplicado em `MappingScreen`, `VisualMappingView` e `AddMappingDialog`.
+
+### D8 — Perfis de mapeamento são globais (não vinculados a dispositivo)
+Decisão: perfis são reutilizáveis em qualquer controle conectado. Não existe binding perfil ↔ dispositivo. Controles diferentes compartilham o mesmo conjunto de perfis.
+
+### D9 — Gatilhos analógicos (L2/R2) capturáveis via chord-capture
+`startChordCapture` agora registra listener `axisMotion` além de `buttonDown`/`buttonUp`. Eixos cruzam threshold (+0.5) para entrar no acorde e voltam ao deadzone (<0.15) para sair. O commit do acorde só ocorre quando `_chordHeld.size === 0 && activeAxes.size === 0`.
 
 ## Lessons
 
 - SVG arc é degenerado para 360° exatos — usar `<circle>` para n=1 setor
 - `largeArcFlag` deve ser computado dinamicamente: `extent > 180 ? 1 : 0`
 - Processo main não conhece o perfil do controle — enriquecimento de nomes deve ocorrer no renderer
+- `startChordCapture` só escutava `buttonDown`/`buttonUp` — gatilhos analógicos (L2/R2) são eixos SDL e precisam de listener `axisMotion` separado com lógica própria de threshold/deadzone
 
 ## Blockers
 
@@ -42,6 +49,6 @@ _(nenhum)_
 
 ## Preferences
 
-- Commits em português descritivo com Co-authored-by Copilot
+- Commits em inglês com padrão Conventional Commits (semantic commit)
 - Build verificado com `npm run build` (electron-vite build)
 - TypeScript errors verificados via build (projeto usa tsconfig composto, `tsc --noEmit` direto não funciona)

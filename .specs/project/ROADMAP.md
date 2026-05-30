@@ -38,6 +38,13 @@
 - Nomes de botões corretos nas badges (A, B, X, Y em vez de Botão 0)
 - Remoção da seção ANALÓGICOS do menu lateral
 
+### ✅ M7 — Mapping profiles
+- Múltiplos perfis de mapeamento nomeados (criar, renomear, deletar)
+- Seleção de perfil ativo via dropdown no header
+- Migração automática de mapeamentos legados para perfil "Default"
+- Exportar / importar perfis via arquivo JSON
+- Persistência global de perfis com electron-store
+
 ## Backlog
 
 ### 🔲 Perfis adicionais de controles
@@ -47,9 +54,8 @@
 - Permitir usuário selecionar perfil visual manualmente
 
 ### 🔲 Melhorias de UX
-- Importar/exportar configurações
-- Renomear mapeamentos/perfis
 - Histórico de undo para deleção
+- Renomear mapeamentos individuais
 
 ### 🔲 Mapeamento avançado
 - Mapeamento de gatilhos analógicos com threshold configurável
