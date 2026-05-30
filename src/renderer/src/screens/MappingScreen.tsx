@@ -493,7 +493,7 @@ export default function MappingScreen({ device, onBack }: Props) {
         )}
         {mappings.map((m, i) => (
           <div key={i} className="card px-4 py-3 flex items-center gap-3">
-            <span className="badge-ctrl">{controlLabel(m, profile)}</span>
+            <span className="badge-ctrl">{controlLabel(m, controllerProfile ?? { inputs: [] } as ControllerProfile)}</span>
             <span className="text-slate-300 text-sm">──►</span>
             <span className="badge-key">{m.key_combo}</span>
             <div className="flex-1" />
@@ -549,7 +549,7 @@ export default function MappingScreen({ device, onBack }: Props) {
           existingMappings={mappings}
           presetInput={addPreset}
           resolveInputName={(type, buttonId, axisDirection) =>
-            resolveButtonName(profile, type, buttonId, axisDirection)
+            resolveButtonName(controllerProfile ?? { inputs: [] } as ControllerProfile, type, buttonId, axisDirection)
           }
           onConfirm={(m) => {
             handleMappingAdded(m)
