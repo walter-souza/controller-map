@@ -72,6 +72,17 @@ export function registerIpcHandlers(): void {
 
   handle('controller:chord-capture-stop', () => controllerService.stopChordCapture())
 
+  handle('controller:monitor-start', (deviceId) => {
+    controllerService.startMonitor(
+      deviceId,
+      (button) => webContents?.send('controller:button-down', { button }),
+      (button) => webContents?.send('controller:button-up', { button }),
+      (axis, value) => webContents?.send('controller:axis-motion', { axis, value }),
+    )
+  })
+
+  handle('controller:monitor-stop', () => controllerService.stopMonitor())
+
   handle('keyboard:capture-start', () => {
     keyboardService.startCapture((combo) => {
       stopInputSuppression()

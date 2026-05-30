@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AngleMappingConfig, DeviceInfo, Mapping, RepeatSettings } from '../../../shared/models'
+import type { AngleMappingConfig, CaptureResult, DeviceInfo, Mapping, RepeatSettings } from '../../../shared/models'
 import AddMappingDialog from '../components/AddMappingDialog'
 import AngleMappingDialog from '../components/AngleMappingDialog'
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog'
 import SettingsDialog from '../components/SettingsDialog'
+import VisualMappingView from '../components/VisualMappingView'
+import { detectProfile } from '../data/profiles'
+import type { ControllerProfile } from '../../../shared/models'
 
 interface Props {
   device: DeviceInfo
@@ -23,9 +26,26 @@ function sameKey(a: Mapping, b: Mapping): boolean {
   return mappingInputKey(a) === mappingInputKey(b)
 }
 
-function controlLabel(m: Mapping): string {
-  const parts = [m.button_name, ...(m.chord_inputs ?? []).map((c) => c.button_name)]
-  return parts.join(' + ')
+function resolveButtonName(
+  profile: ControllerProfile,
+  sourceType: string,
+  buttonId: number,
+  axisDirection?: number,
+): string {
+  const input = profile.inputs.find((i) => {
+    if (sourceType === 'button' && i.type === 'button') return i.id === buttonId
+    if (i.type === 'axis') return i.axis_id === buttonId && i.direction === axisDirection
+    return false
+  })
+  return input?.name ?? (sourceType === 'button' ? `Botão ${buttonId}` : `Eixo ${buttonId}`)
+}
+
+function controlLabel(m: Mapping, profile: ControllerProfile): string {
+  const primary = resolveButtonName(profile, m.source_type, m.button_id, m.axis_direction || undefined)
+  const extras = (m.chord_inputs ?? []).map((c) =>
+    resolveButtonName(profile, c.type, c.button_id, c.axis_direction),
+  )
+  return [primary, ...extras].join(' + ')
 }
 
 export default function MappingScreen({ device, onBack }: Props) {
@@ -35,12 +55,69 @@ export default function MappingScreen({ device, onBack }: Props) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [pulse, setPulse] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [addPreset, setAddPreset] = useState<CaptureResult | undefined>(undefined)
   const [showAngleAdd, setShowAngleAdd] = useState(false)
   const [editingAngle, setEditingAngle] = useState<AngleMappingConfig | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null)
   const [deleteAngleId, setDeleteAngleId] = useState<string | null>(null)
   const pulseRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Profile detection: auto-identify known controllers by device name
+  const profile: ControllerProfile = detectProfile(device.name)
+  const [viewMode, setViewMode] = useState<'visual' | 'list'>('visual')
+  const [activeInputs, setActiveInputs] = useState<Set<string>>(new Set())
+  // Raw axis values for smooth joystick pad visualization (dot position)
+  const [axisValues, setAxisValues] = useState<Record<number, number>>({})
+  // Ref + RAF for throttling axisValues state updates to 60fps
+  const axisValuesRef = useRef<Record<number, number>>({})
+  const axisRafRef = useRef<number | null>(null)
+
+  // Real-time input monitor — active when visual view is visible
+  useEffect(() => {
+    if (viewMode !== 'visual') {
+      setActiveInputs(new Set())
+      setAxisValues({})
+      axisValuesRef.current = {}
+      return
+    }
+    window.api.invoke('controller:monitor-start', device.id)
+    const offDown = window.api.on('controller:button-down', ({ button }) => {
+      setActiveInputs((prev) => new Set([...prev, `b:${button}`]))
+    })
+    const offUp = window.api.on('controller:button-up', ({ button }) => {
+      setActiveInputs((prev) => { const s = new Set(prev); s.delete(`b:${button}`); return s })
+    })
+    const offAxis = window.api.on('controller:axis-motion', ({ axis, value }) => {
+      const THRESHOLD = 0.5
+      // Threshold-based activeInputs (drives sector highlight + guide line highlight)
+      setActiveInputs((prev) => {
+        const s = new Set(prev)
+        s.delete(`a:${axis}:1`)
+        s.delete(`a:${axis}:-1`)
+        if (value > THRESHOLD) s.add(`a:${axis}:1`)
+        else if (value < -THRESHOLD) s.add(`a:${axis}:-1`)
+        return s
+      })
+      // Raw axis values via RAF-throttled state update (drives dot position)
+      axisValuesRef.current = { ...axisValuesRef.current, [axis]: value }
+      if (!axisRafRef.current) {
+        axisRafRef.current = requestAnimationFrame(() => {
+          setAxisValues({ ...axisValuesRef.current })
+          axisRafRef.current = null
+        })
+      }
+    })
+    return () => {
+      offDown(); offUp(); offAxis()
+      if (axisRafRef.current) cancelAnimationFrame(axisRafRef.current)
+      axisRafRef.current = null
+      window.api.invoke('controller:monitor-stop')
+      setActiveInputs(new Set())
+      setAxisValues({})
+      axisValuesRef.current = {}
+    }
+  }, [viewMode, device.id])
 
   // Load data on mount
   useEffect(() => {
@@ -101,6 +178,21 @@ export default function MappingScreen({ device, onBack }: Props) {
     saveMappings(next)
   }
 
+  const openAddWithPreset = (preset: CaptureResult) => {
+    setAddPreset(preset)
+    setShowAdd(true)
+  }
+
+  const openAddFreeCapture = () => {
+    setAddPreset(undefined)
+    setShowAdd(true)
+  }
+
+  const handleDeleteMapping = (m: Mapping) => {
+    const idx = mappings.findIndex((x) => sameKey(x, m))
+    if (idx !== -1) setDeleteIndex(idx)
+  }
+
   const handleSettingsSaved = (s: RepeatSettings) => {
     setSettings(s)
     window.api.invoke('settings:save', s)
@@ -152,8 +244,23 @@ export default function MappingScreen({ device, onBack }: Props) {
           <span className={`text-xs font-medium ${statusTextColor}`}>{statusText}</span>
         </div>
         <div className="flex-1" />
+        {/* View mode toggle — always available */}
+          <div className="flex rounded-md border border-slate-200 overflow-hidden text-xs">
+            <button
+              onClick={() => setViewMode('visual')}
+              className={`px-3 py-1 transition-colors ${viewMode === 'visual' ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+            >
+              🎮 Visual
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-3 py-1 transition-colors ${viewMode === 'list' ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+            >
+              ☰ Lista
+            </button>
+          </div>
         <button
-          onClick={() => setShowAdd(true)}
+          onClick={openAddFreeCapture}
           disabled={isPlaying}
           className="btn-ctrl text-xs disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -181,8 +288,43 @@ export default function MappingScreen({ device, onBack }: Props) {
         )}
       </div>
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+      {/* Main content: visual or list view */}
+      {viewMode === 'visual' ? (
+        <VisualMappingView
+          profile={profile}
+          mappings={mappings}
+          angleMappings={angleMappings}
+          isPlaying={isPlaying}
+          activeInputs={activeInputs}
+          axisValues={axisValues}
+          onAddMapping={openAddWithPreset}
+          onDeleteMapping={handleDeleteMapping}
+          onEditAngleMapping={(stick) => {
+            const existing = angleMappings.find(
+              (a) => a.axis_x === stick.axis_x && a.axis_y === stick.axis_y
+            )
+            setEditingAngle(existing ?? {
+              id: crypto.randomUUID(),
+              axis_x: stick.axis_x,
+              axis_y: stick.axis_y,
+              deadzone: 0.2,
+              nodes: [
+                { id: crypto.randomUUID(), angle: 45 },
+                { id: crypto.randomUUID(), angle: 135 },
+                { id: crypto.randomUUID(), angle: 225 },
+                { id: crypto.randomUUID(), angle: 315 },
+              ],
+              regions: [
+                { id: crypto.randomUUID(), key_combo: '' },
+                { id: crypto.randomUUID(), key_combo: '' },
+                { id: crypto.randomUUID(), key_combo: '' },
+                { id: crypto.randomUUID(), key_combo: '' },
+              ],
+            })
+          }}
+        />
+      ) : (
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
         {mappings.length === 0 && angleMappings.length === 0 && (
           <div className="text-center mt-10">
             <p className="text-slate-400 text-sm">Nenhum mapeamento ainda.</p>
@@ -191,7 +333,7 @@ export default function MappingScreen({ device, onBack }: Props) {
         )}
         {mappings.map((m, i) => (
           <div key={i} className="card px-4 py-3 flex items-center gap-3">
-            <span className="badge-ctrl">{controlLabel(m)}</span>
+            <span className="badge-ctrl">{controlLabel(m, profile)}</span>
             <span className="text-slate-300 text-sm">──►</span>
             <span className="badge-key">{m.key_combo}</span>
             <div className="flex-1" />
@@ -237,18 +379,27 @@ export default function MappingScreen({ device, onBack }: Props) {
             ))}
           </>
         )}
-      </div>
+        </div>
+      )}
 
       {/* Dialogs */}
       {showAdd && (
         <AddMappingDialog
           deviceId={device.id}
           existingMappings={mappings}
+          presetInput={addPreset}
+          resolveInputName={(type, buttonId, axisDirection) =>
+            resolveButtonName(profile, type, buttonId, axisDirection)
+          }
           onConfirm={(m) => {
             handleMappingAdded(m)
             setShowAdd(false)
+            setAddPreset(undefined)
           }}
-          onCancel={() => setShowAdd(false)}
+          onCancel={() => {
+            setShowAdd(false)
+            setAddPreset(undefined)
+          }}
         />
       )}
       {(showAngleAdd || editingAngle) && (

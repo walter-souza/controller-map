@@ -7,14 +7,21 @@ interface Props {
   existingMappings: Mapping[]
   onConfirm: (mapping: Mapping) => void
   onCancel: () => void
+  // When provided (from visual mapping view): skip chord-capture and use this as the primary input
+  presetInput?: CaptureResult
+  // Resolve profile display name for a captured input (button "A", axis "LS↑", etc.)
+  resolveInputName?: (type: string, buttonId: number, axisDirection?: number) => string
 }
 
-// Capture phase state machine: chord-capture → key → ready
+// Capture phase state machine:
+// - Normal flow:  chord-capture → key → ready
+// - Preset flow:  key → ready  (chord-capture skipped)
 type CapturePhase = 'chord-capture' | 'key' | 'ready'
 
-export default function AddMappingDialog({ deviceId, existingMappings, onConfirm, onCancel }: Props) {
-  const [phase, setPhase] = useState<CapturePhase>('chord-capture')
-  const [capturedInputs, setCapturedInputs] = useState<CaptureResult[]>([])
+export default function AddMappingDialog({ deviceId, existingMappings, onConfirm, onCancel, presetInput, resolveInputName }: Props) {
+  const [phase, setPhase] = useState<CapturePhase>(presetInput ? 'key' : 'chord-capture')
+  // When presetInput is given, it's the sole captured input (no chord)
+  const [capturedInputs, setCapturedInputs] = useState<CaptureResult[]>(presetInput ? [presetInput] : [])
   const [keyCombo, setKeyCombo] = useState<string | null>(null)
 
   // Chord capture: accumulates all simultaneously held buttons; fires on release
@@ -22,7 +29,13 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
     if (phase !== 'chord-capture') return
     window.api.invoke('controller:chord-capture-start', deviceId)
     const off = window.api.on('controller:chord-captured', (results) => {
-      setCapturedInputs(results)
+      const enriched = resolveInputName
+        ? results.map((r) => ({
+            ...r,
+            button_name: resolveInputName(r.type, r.button_id, r.type === 'axis' ? r.axis_direction : undefined),
+          }))
+        : results
+      setCapturedInputs(enriched)
       // Auto-proceed to key capture
       setPhase('key')
     })
@@ -96,9 +109,16 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
   }
 
   const retryCapture = () => {
-    setCapturedInputs([])
-    setKeyCombo(null)
-    setPhase('chord-capture')
+    if (presetInput) {
+      // Preset flow: reset to key phase keeping the preset input
+      setCapturedInputs([presetInput])
+      setKeyCombo(null)
+      setPhase('key')
+    } else {
+      setCapturedInputs([])
+      setKeyCombo(null)
+      setPhase('chord-capture')
+    }
   }
 
   const retryKey = () => {
@@ -109,7 +129,7 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
   const inputsLabel = capturedInputs.map((r) => r.button_name).join(' + ')
 
   return (
-    <Modal title="Novo mapeamento" subtitle="Segure os botões do acorde e solte para capturar" onClose={onCancel}>
+    <Modal title="Novo mapeamento" subtitle={presetInput ? `Mapeando: ${presetInput.button_name}` : 'Segure os botões do acorde e solte para capturar'} onClose={onCancel}>
       <div className="flex gap-4 p-5">
 
         {/* Controller panel */}
