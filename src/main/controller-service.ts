@@ -37,6 +37,7 @@ export class ControllerService {
   private _chordAccumulated: CaptureResult[] = []
   private _chordButtonDown: ((e: { button: number }) => void) | null = null
   private _chordButtonUp: ((e: { button: number }) => void) | null = null
+  private _chordAxisMotion: ((e: { axis: number; value: number }) => void) | null = null
 
   private _monitorTrackerInstance: SdlJoystickInstance | null = null
   private _monitorListeners: {
@@ -120,6 +121,20 @@ export class ControllerService {
       const instance = sdl.joystick.openDevice(device)
       this._chordCaptureInstance = instance
 
+      // Track active analog axes (e.g. L2/R2) separately from digital buttons.
+      // An axis "joins" the chord when it crosses AXIS_THRESHOLD, and "leaves"
+      // when it falls back below AXIS_DEADZONE.
+      const activeAxes = new Set<number>()
+
+      const tryCommit = () => {
+        if (this._chordHeld.size === 0 && activeAxes.size === 0 && this._chordAccumulated.length > 0) {
+          const results = [...this._chordAccumulated]
+          const cb = this._chordCaptureCallback
+          this.stopChordCapture()
+          cb?.(results)
+        }
+      }
+
       this._chordButtonDown = (event: { button: number }) => {
         if (!this._chordHeld.has(event.button)) {
           this._chordHeld.add(event.button)
@@ -133,17 +148,37 @@ export class ControllerService {
 
       this._chordButtonUp = (_event: { button: number }) => {
         this._chordHeld.delete(_event.button)
-        // All released and at least one button was pressed → commit the chord
-        if (this._chordHeld.size === 0 && this._chordAccumulated.length > 0) {
-          const results = [...this._chordAccumulated]
-          const cb = this._chordCaptureCallback
-          this.stopChordCapture()
-          cb?.(results)
+        tryCommit()
+      }
+
+      this._chordAxisMotion = (event: { axis: number; value: number }) => {
+        const alreadyActive = activeAxes.has(event.axis)
+        if (Math.abs(event.value) >= AXIS_THRESHOLD) {
+          if (!alreadyActive) {
+            activeAxes.add(event.axis)
+            const direction = event.value > 0 ? 1 : -1
+            // Only add if not already accumulated for this axis+direction
+            const alreadyIn = this._chordAccumulated.some(
+              (r) => r.type === 'axis' && r.button_id === event.axis && (r as { axis_direction?: number }).axis_direction === direction,
+            )
+            if (!alreadyIn) {
+              this._chordAccumulated.push({
+                type: 'axis',
+                button_id: event.axis,
+                button_name: axisArrow(event.axis, direction),
+                axis_direction: direction,
+              })
+            }
+          }
+        } else if (Math.abs(event.value) < AXIS_DEADZONE && alreadyActive) {
+          activeAxes.delete(event.axis)
+          tryCommit()
         }
       }
 
       instance.on('buttonDown', this._chordButtonDown)
       instance.on('buttonUp', this._chordButtonUp)
+      instance.on('axisMotion', this._chordAxisMotion)
     } catch {
       this._chordCaptureCallback = null
     }
@@ -153,12 +188,14 @@ export class ControllerService {
     if (this._chordCaptureInstance) {
       if (this._chordButtonDown) this._chordCaptureInstance.off('buttonDown', this._chordButtonDown)
       if (this._chordButtonUp) this._chordCaptureInstance.off('buttonUp', this._chordButtonUp)
+      if (this._chordAxisMotion) this._chordCaptureInstance.off('axisMotion', this._chordAxisMotion)
       if (!this._chordCaptureInstance.closed) this._chordCaptureInstance.close()
       this._chordCaptureInstance = null
     }
     this._chordCaptureCallback = null
     this._chordButtonDown = null
     this._chordButtonUp = null
+    this._chordAxisMotion = null
     this._chordHeld.clear()
     this._chordAccumulated = []
   }
