@@ -47,8 +47,8 @@ export default function MappingScreen({ device, onBack }: Props) {
   const pulseRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Profile detection: auto-identify known controllers by device name
-  const profile: ControllerProfile | null = detectProfile(device.name)
-  const [viewMode, setViewMode] = useState<'visual' | 'list'>(profile ? 'visual' : 'list')
+  const profile: ControllerProfile = detectProfile(device.name)
+  const [viewMode, setViewMode] = useState<'visual' | 'list'>('visual')
   const [activeInputs, setActiveInputs] = useState<Set<string>>(new Set())
   // Raw axis values for smooth joystick pad visualization (dot position)
   const [axisValues, setAxisValues] = useState<Record<number, number>>({})
@@ -272,7 +272,7 @@ export default function MappingScreen({ device, onBack }: Props) {
       </div>
 
       {/* Main content: visual or list view */}
-      {profile && viewMode === 'visual' ? (
+      {viewMode === 'visual' ? (
         <VisualMappingView
           profile={profile}
           mappings={mappings}
