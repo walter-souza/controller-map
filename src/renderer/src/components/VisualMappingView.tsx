@@ -289,20 +289,20 @@ export default function VisualMappingView({
     const key    = inputKey(input)
     const active  = isInputActive(input, activeInputs)
     const hovered = hoveredKey === key
-    if (active)  return { color: '#facc15', opacity: 0.95, sw: '0.5' }
-    if (hovered) return { color: mapped ? '#93c5fd' : '#94a3b8', opacity: 0.95, sw: '0.5' }
-    if (mapped)  return { color: '#60a5fa', opacity: 0.65, sw: '0.28' }
-    return { color: '#334155', opacity: 0.3, sw: '0.28' }
+    if (active)  return { color: '#facc15', opacity: 1.0, sw: '0.45', glow: true }
+    if (hovered) return { color: mapped ? '#93c5fd' : '#cbd5e1', opacity: 1.0, sw: '0.45', glow: true }
+    if (mapped)  return { color: '#3b82f6', opacity: 0.8, sw: '0.28', glow: false }
+    return { color: '#334155', opacity: 0.35, sw: '0.22', glow: false }
   }
 
   function labelClass(input: ControllerInputDef, mapped: Mapping | undefined): string {
     const key    = inputKey(input)
     const active  = isInputActive(input, activeInputs)
     const hovered = hoveredKey === key
-    if (active)  return 'text-yellow-400'
-    if (hovered) return mapped ? 'text-blue-200' : 'text-slate-200'
-    if (mapped)  return 'text-blue-300 hover:text-red-400'
-    return 'text-slate-400 hover:text-slate-100'
+    if (active)  return 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400'
+    if (hovered) return mapped ? 'border-red-500/45 bg-red-950/20 text-red-300' : 'border-slate-500/45 bg-slate-900 text-slate-200'
+    if (mapped)  return 'border-blue-500/20 bg-slate-950/80 text-blue-300'
+    return 'border-white/5 bg-slate-950/45 text-slate-400 opacity-60 hover:opacity-100'
   }
 
   return (
@@ -328,6 +328,12 @@ export default function VisualMappingView({
             preserveAspectRatio="none"
             style={{ zIndex: 1 }}
           >
+            <defs>
+              <filter id="line-glow" x="-30%" y="-30%" width="160%" height="160%">
+                <feGaussianBlur stdDeviation="0.5" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+            </defs>
             {[
               ...leftLabels.map((l) => ({ ...l, side: 'left' as const })),
               ...rightLabels.map((l) => ({ ...l, side: 'right' as const })),
@@ -336,21 +342,54 @@ export default function VisualMappingView({
               const key    = inputKey(input)
               const bx     = btnX(input)
               const by     = input.y
-              const { color, opacity, sw } = svgStyle(input, mapped)
+              const { color, opacity, sw, glow } = svgStyle(input, mapped)
               const pts = side === 'left'
                 ? `${LBL_L_X},${labelY} ${ELBOW_L_X},${labelY} ${bx},${by}`
                 : `${bx},${by} ${ELBOW_R_X},${labelY} ${LBL_R_X},${labelY}`
               return (
                 <g key={key} opacity={opacity}>
+                  {/* Glow Underlay Line */}
+                  {(glow || mapped) && (
+                    <polyline
+                      points={pts}
+                      stroke={color}
+                      strokeWidth={Number(sw) * 3}
+                      opacity={glow ? 0.4 : 0.15}
+                      fill="none"
+                      strokeLinejoin="round"
+                      filter="url(#line-glow)"
+                      pointerEvents="none"
+                    />
+                  )}
+                  {/* Sharp Core Line */}
                   <polyline points={pts} stroke={color} strokeWidth={sw} fill="none" strokeLinejoin="round" pointerEvents="none" />
-                  {input.type === 'axis'
-                    ? <polygon points={`${bx},${by - DOT_RY} ${bx + DOT_RX * 1.3},${by} ${bx},${by + DOT_RY} ${bx - DOT_RX * 1.3},${by}`} fill={color} pointerEvents="none" />
-                    : <ellipse cx={bx} cy={by} rx={DOT_RX} ry={DOT_RY} fill={color} pointerEvents="none" />
-                  }
+                  
+                  {/* Precision Target Anchor Dot */}
+                  {/* Outer glowing target ring */}
+                  <circle
+                    cx={bx}
+                    cy={by}
+                    r={1.2}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth="0.15"
+                    opacity={glow ? 0.8 : mapped ? 0.45 : 0.2}
+                    pointerEvents="none"
+                  />
+                  {/* Inner solid anchor dot */}
+                  <circle
+                    cx={bx}
+                    cy={by}
+                    r={0.45}
+                    fill={color}
+                    pointerEvents="none"
+                  />
+
+                  {/* Wide transparent interactive line for easier hovering */}
                   <polyline
                     points={pts}
                     stroke="transparent"
-                    strokeWidth="3"
+                    strokeWidth="3.5"
                     fill="none"
                     style={{ cursor: 'pointer' }}
                     onMouseEnter={() => setHoveredKey(key)}
@@ -365,11 +404,13 @@ export default function VisualMappingView({
           {leftLabels.map(({ input, labelY }) => {
             const mapped = findMapping(input, mappings)
             const key    = inputKey(input)
+            const active = isInputActive(input, activeInputs)
+            const hovered = hoveredKey === key
             return (
               <div
                 key={key}
-                className="absolute"
-                style={{ right: `${100 - LBL_L_X}%`, top: `${labelY}%`, transform: 'translateY(-50%)', zIndex: 2 }}
+                className="absolute transition-all duration-150"
+                style={{ right: `${100 - LBL_L_X}%`, top: `${labelY}%`, transform: 'translateY(-50%)', zIndex: hovered ? 10 : 2 }}
               >
                 <button
                   disabled={isPlaying}
@@ -378,15 +419,47 @@ export default function VisualMappingView({
                   onMouseEnter={() => setHoveredKey(key)}
                   onMouseLeave={() => setHoveredKey(null)}
                   className={[
-                    'flex items-center gap-1 text-[11px] font-mono whitespace-nowrap',
-                    'rounded px-1 py-0.5 bg-slate-900/70',
-                    'transition-colors duration-75 disabled:opacity-40',
+                    'flex items-center gap-2 text-[11px] font-mono whitespace-nowrap',
+                    'rounded-md border p-1 shadow-md transition-all duration-150 disabled:opacity-40 backdrop-blur-md',
                     labelClass(input, mapped),
+                    hovered ? 'scale-105 shadow-lg' : 'scale-100',
                   ].join(' ')}
                 >
-                  <span className={mapped ? 'font-semibold uppercase' : 'text-slate-500'}>{mapped ? mapped.key_combo : '+'}</span>
-                  <span className="opacity-40 text-[9px]">◂</span>
-                  <span>{input.name}</span>
+                  {/* Mapped Key / Keycap */}
+                  <span
+                    className={[
+                      'px-1.5 py-0.5 rounded text-[9px] font-sans font-bold shadow-sm transition-all',
+                      mapped
+                        ? hovered
+                          ? 'bg-red-500/20 border border-red-500/40 text-red-300'
+                          : active
+                            ? 'bg-yellow-500/20 border border-yellow-500/40 text-yellow-300'
+                            : 'bg-blue-500/25 border border-blue-500/35 text-blue-300'
+                        : 'bg-slate-800/60 border border-slate-700/50 text-slate-500',
+                    ].join(' ')}
+                  >
+                    {mapped ? mapped.key_combo.toUpperCase() : 'LIVRE'}
+                  </span>
+
+                  {/* Separator / Direction Indicator */}
+                  <span
+                    className={[
+                      'text-[9px] transition-colors',
+                      hovered && mapped ? 'text-red-400 font-bold' : active ? 'text-yellow-400' : 'text-slate-600',
+                    ].join(' ')}
+                  >
+                    {hovered && mapped ? '✕' : '◂'}
+                  </span>
+
+                  {/* Controller Button Label */}
+                  <span
+                    className={[
+                      'font-sans text-[11px] font-medium tracking-wide pr-1 transition-colors',
+                      active ? 'text-yellow-300' : hovered ? 'text-slate-100' : mapped ? 'text-slate-300' : 'text-slate-400',
+                    ].join(' ')}
+                  >
+                    {input.name}
+                  </span>
                 </button>
               </div>
             )
@@ -396,11 +469,13 @@ export default function VisualMappingView({
           {rightLabels.map(({ input, labelY }) => {
             const mapped = findMapping(input, mappings)
             const key    = inputKey(input)
+            const active = isInputActive(input, activeInputs)
+            const hovered = hoveredKey === key
             return (
               <div
                 key={key}
-                className="absolute"
-                style={{ left: `${LBL_R_X}%`, top: `${labelY}%`, transform: 'translateY(-50%)', zIndex: 2 }}
+                className="absolute transition-all duration-150"
+                style={{ left: `${LBL_R_X}%`, top: `${labelY}%`, transform: 'translateY(-50%)', zIndex: hovered ? 10 : 2 }}
               >
                 <button
                   disabled={isPlaying}
@@ -409,15 +484,47 @@ export default function VisualMappingView({
                   onMouseEnter={() => setHoveredKey(key)}
                   onMouseLeave={() => setHoveredKey(null)}
                   className={[
-                    'flex items-center gap-1 text-[11px] font-mono whitespace-nowrap',
-                    'rounded px-1 py-0.5 bg-slate-900/70',
-                    'transition-colors duration-75 disabled:opacity-40',
+                    'flex items-center gap-2 text-[11px] font-mono whitespace-nowrap',
+                    'rounded-md border p-1 shadow-md transition-all duration-150 disabled:opacity-40 backdrop-blur-md',
                     labelClass(input, mapped),
+                    hovered ? 'scale-105 shadow-lg' : 'scale-100',
                   ].join(' ')}
                 >
-                  <span>{input.name}</span>
-                  <span className="opacity-40 text-[9px]">▸</span>
-                  <span className={mapped ? 'font-semibold uppercase' : 'text-slate-500'}>{mapped ? mapped.key_combo : '+'}</span>
+                  {/* Controller Button Label */}
+                  <span
+                    className={[
+                      'font-sans text-[11px] font-medium tracking-wide pl-1 transition-colors',
+                      active ? 'text-yellow-300' : hovered ? 'text-slate-100' : mapped ? 'text-slate-300' : 'text-slate-400',
+                    ].join(' ')}
+                  >
+                    {input.name}
+                  </span>
+
+                  {/* Separator / Direction Indicator */}
+                  <span
+                    className={[
+                      'text-[9px] transition-colors',
+                      hovered && mapped ? 'text-red-400 font-bold' : active ? 'text-yellow-400' : 'text-slate-600',
+                    ].join(' ')}
+                  >
+                    {hovered && mapped ? '✕' : '▸'}
+                  </span>
+
+                  {/* Mapped Key / Keycap */}
+                  <span
+                    className={[
+                      'px-1.5 py-0.5 rounded text-[9px] font-sans font-bold shadow-sm transition-all',
+                      mapped
+                        ? hovered
+                          ? 'bg-red-500/20 border border-red-500/40 text-red-300'
+                          : active
+                            ? 'bg-yellow-500/20 border border-yellow-500/40 text-yellow-300'
+                            : 'bg-blue-500/25 border border-blue-500/35 text-blue-300'
+                        : 'bg-slate-800/60 border border-slate-700/50 text-slate-500',
+                    ].join(' ')}
+                  >
+                    {mapped ? mapped.key_combo.toUpperCase() : 'LIVRE'}
+                  </span>
                 </button>
               </div>
             )
