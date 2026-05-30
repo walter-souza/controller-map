@@ -425,6 +425,7 @@ export default function VisualMappingView({
               const bx     = btnX(input)
               const by     = input.y
               const { color, opacity, sw, glow } = svgStyle(input, mapped)
+              const hovered = hoveredKey === key
               const pts = side === 'left'
                 ? `${LBL_L_X},${labelY} ${ELBOW_L_X},${labelY} ${bx},${by}`
                 : `${bx},${by} ${ELBOW_R_X},${labelY} ${LBL_R_X},${labelY}`
@@ -485,6 +486,7 @@ export default function VisualMappingView({
               const bx     = btnX(input)
               const by     = input.y
               const { color, opacity, sw, glow } = svgStyle(input, mapped)
+              const hovered = hoveredKey === key
               
               // Spaced badge X positions to prevent overlap: Select at 34%, Home at 50%, Start at 66%
               let badgeX = 50
