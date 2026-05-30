@@ -91,6 +91,14 @@ export interface ControllerProfile {
   sticks?: StickDef[]     // joystick stick definitions for pad visualization
 }
 
+export interface MappingProfile {
+  id: string
+  name: string
+  mappings: Mapping[]
+  angleMappings: AngleMappingConfig[]
+  createdAt: string // ISO timestamp
+}
+
 // Controller capture result
 export type CaptureResult =
   | { type: 'button'; button_id: number; button_name: string }
