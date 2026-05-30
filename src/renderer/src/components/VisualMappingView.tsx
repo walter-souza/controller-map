@@ -1,4 +1,4 @@
-import React, { memo, useState } from 'react'
+import { memo, useState, cloneElement, ReactElement } from 'react'
 import type { AngleMappingConfig, ControllerAxisDef, ControllerInputDef, ControllerProfile, CaptureResult, Mapping, StickDef } from '../../../shared/models'
 
 // ── Layout constants (% of container) ─────────────────────────────────────────
@@ -327,7 +327,7 @@ export default function VisualMappingView({
     const by = input.y
 
     // Resolve size and coordinates in the 100x100 SVG viewbox
-    let shape: React.ReactElement | null = null
+    let shape: ReactElement | null = null
     const name = input.name
 
     if (name === 'L1' || name === 'R1') {
@@ -369,7 +369,7 @@ export default function VisualMappingView({
         pointerEvents="visiblePainted"
       >
         {/* Glow Underlay Border */}
-        {React.cloneElement(shape, {
+        {cloneElement(shape, {
           fill: fill,
           stroke: color,
           strokeWidth: (glow || active || hovered) ? 0.35 : 0.15,
@@ -377,7 +377,7 @@ export default function VisualMappingView({
           opacity: (glow || active || hovered) ? 0.85 : 0.25,
         })}
         {/* Sharp Core Border */}
-        {React.cloneElement(shape, {
+        {cloneElement(shape, {
           fill: 'none',
           stroke: color,
           strokeWidth: 0.12,
