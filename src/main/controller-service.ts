@@ -67,9 +67,14 @@ export class ControllerService {
       }
 
       // Open trackers for newly connected devices
+      // Open trackers for newly connected devices
       for (const d of devices) {
         if (!this._trackers.has(d.id)) {
-          try { this._trackers.set(d.id, sdl.joystick.openDevice(d)) } catch { /* ignore */ }
+          try {
+            const inst = sdl.joystick.openDevice(d)
+            this._setupHatSimulation(inst)
+            this._trackers.set(d.id, inst)
+          } catch { /* ignore */ }
         }
       }
 
@@ -88,6 +93,7 @@ export class ControllerService {
       const device = sdl.joystick.devices.find((d: SdlDevice) => d.id === deviceId)
       if (!device) return
       const instance = sdl.joystick.openDevice(device)
+      this._setupHatSimulation(instance)
       this._captureInstance = instance
 
       instance.on('buttonDown', this._onButtonDown)
@@ -119,6 +125,7 @@ export class ControllerService {
       const device = sdl.joystick.devices.find((d: SdlDevice) => d.id === deviceId)
       if (!device) return
       const instance = sdl.joystick.openDevice(device)
+      this._setupHatSimulation(instance)
       this._chordCaptureInstance = instance
 
       // Track active analog axes (e.g. L2/R2) separately from digital buttons.
@@ -277,7 +284,9 @@ export class ControllerService {
     try {
       const device = sdl.joystick.devices.find((d: SdlDevice) => d.id === deviceId)
       if (!device) return null
-      return sdl.joystick.openDevice(device)
+      const instance = sdl.joystick.openDevice(device)
+      this._setupHatSimulation(instance)
+      return instance
     } catch {
       return null
     }
@@ -305,6 +314,78 @@ export class ControllerService {
 
   isAxisResting(value: number): boolean {
     return Math.abs(value) < AXIS_DEADZONE
+  }
+
+  private _setupHatSimulation(instance: SdlJoystickInstance): void {
+    if (!instance) return
+    try {
+      const dpadState = {
+        up: false,
+        down: false,
+        left: false,
+        right: false,
+      }
+
+      // Ensure buttons array has at least 15 slots so buttons 11-14 are included in length
+      // and won't throw out of bounds.
+      if (!instance.buttons) {
+        // @ts-ignore
+        instance.buttons = []
+      }
+      while (instance.buttons.length < 15) {
+        instance.buttons.push(false)
+      }
+
+      // Also pad internal _buttons array if it exists
+      // @ts-ignore
+      if (instance._buttons) {
+        // @ts-ignore
+        while (instance._buttons.length < 15) {
+          // @ts-ignore
+          instance._buttons.push(false)
+        }
+      }
+
+      instance.on('hatMotion', (event: { hat: number; value: string }) => {
+        if (event.hat !== 0) return
+        const val = event.value || ''
+        const nextUp = val.includes('up')
+        const nextDown = val.includes('down')
+        const nextLeft = val.includes('left')
+        const nextRight = val.includes('right')
+
+        const handleButtonTransition = (buttonId: number, current: boolean, next: boolean) => {
+          if (current !== next) {
+            try {
+              instance.buttons[buttonId] = next
+              // @ts-ignore
+              if (instance._buttons) {
+                // @ts-ignore
+                instance._buttons[buttonId] = next
+              }
+            } catch { /* ignore */ }
+
+            if (next) {
+              instance.emit('buttonDown', { button: buttonId })
+            } else {
+              instance.emit('buttonUp', { button: buttonId })
+            }
+          }
+        }
+
+        handleButtonTransition(11, dpadState.up, nextUp)
+        dpadState.up = nextUp
+
+        handleButtonTransition(12, dpadState.down, nextDown)
+        dpadState.down = nextDown
+
+        handleButtonTransition(13, dpadState.left, nextLeft)
+        dpadState.left = nextLeft
+
+        handleButtonTransition(14, dpadState.right, nextRight)
+        dpadState.right = nextRight
+      })
+    } catch { /* ignore */ }
   }
 }
 
