@@ -200,19 +200,19 @@ interface StoreSchema {
 
 | Req ID   | Story                    | Status  |
 |----------|--------------------------|---------|
-| PROF-01  | P1: Selecionar perfil    | Pending |
-| PROF-02  | P1: Criar perfil         | Pending |
-| PROF-03  | P1: Migração automática  | Pending |
-| PROF-04  | P2: Renomear perfil      | Pending |
-| PROF-05  | P2: Deletar perfil       | Pending |
-| PROF-06  | P2: Exportar perfil      | Pending |
-| PROF-07  | P2: Importar perfil      | Pending |
+| PROF-01  | P1: Selecionar perfil    | ✅ Done |
+| PROF-02  | P1: Criar perfil         | ✅ Done |
+| PROF-03  | P1: Migração automática  | ✅ Done |
+| PROF-04  | P2: Renomear perfil      | ✅ Done |
+| PROF-05  | P2: Deletar perfil       | ✅ Done |
+| PROF-06  | P2: Exportar perfil      | ✅ Done |
+| PROF-07  | P2: Importar perfil      | ✅ Done |
 
 ---
 
 ## Success Criteria
 
-- [ ] Usuário consegue criar e nomear perfis distintos com mapeamentos independentes
-- [ ] Trocar de perfil muda os mapeamentos em < 100ms (sem reload)
-- [ ] Mapeamentos pré-existentes aparecem intactos no perfil "Default" após migração
-- [ ] Arquivo exportado pode ser importado em outra instalação sem erros
+- [x] Usuário consegue criar e nomear perfis distintos com mapeamentos independentes
+- [x] Trocar de perfil muda os mapeamentos em < 100ms (sem reload)
+- [x] Mapeamentos pré-existentes aparecem intactos no perfil "Default" após migração
+- [x] Arquivo exportado pode ser importado em outra instalação sem erros

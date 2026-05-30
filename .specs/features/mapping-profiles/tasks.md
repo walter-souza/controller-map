@@ -2,7 +2,7 @@
 
 **Feature:** mapping-profiles
 **Spec:** ../spec.md
-**Status:** In Progress
+**Status:** ✅ Complete
 
 ---
 
@@ -127,7 +127,7 @@ Mudanças:
 6. **Passar** `mappings` e `angleMappings` do `activeProfile` para o restante da UI (sem mudar props de VisualMappingView)
 
 **Done when:** Perfis funcionando end-to-end; build sem erros
-**Status:** Pending
+**Status:** ✅ Done
 
 ---
 
@@ -152,4 +152,4 @@ interface Props {
 - Reusa `Modal` existente
 
 **Done when:** Componente funcional, sem erros de build
-**Status:** Pending
+**Status:** ✅ Done
