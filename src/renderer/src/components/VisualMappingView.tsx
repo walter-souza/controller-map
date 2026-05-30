@@ -384,7 +384,7 @@ export default function VisualMappingView({
                     labelClass(input, mapped),
                   ].join(' ')}
                 >
-                  <span className={mapped ? 'font-semibold' : 'text-slate-500'}>{mapped ? mapped.key_combo : '+'}</span>
+                  <span className={mapped ? 'font-semibold uppercase' : 'text-slate-500'}>{mapped ? mapped.key_combo : '+'}</span>
                   <span className="opacity-40 text-[9px]">◂</span>
                   <span>{input.name}</span>
                 </button>
@@ -417,7 +417,7 @@ export default function VisualMappingView({
                 >
                   <span>{input.name}</span>
                   <span className="opacity-40 text-[9px]">▸</span>
-                  <span className={mapped ? 'font-semibold' : 'text-slate-500'}>{mapped ? mapped.key_combo : '+'}</span>
+                  <span className={mapped ? 'font-semibold uppercase' : 'text-slate-500'}>{mapped ? mapped.key_combo : '+'}</span>
                 </button>
               </div>
             )
