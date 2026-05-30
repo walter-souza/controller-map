@@ -613,7 +613,7 @@ export default function VisualMappingView({
             if (input.name === 'Select') badgeX = 34
             if (input.name === 'Start')  badgeX = 66
             
-            const labelY = 4.0
+            const labelY = 0.0
             const isLeftPattern = input.name === 'Select' || input.name === 'Home'
             return (
               <div
