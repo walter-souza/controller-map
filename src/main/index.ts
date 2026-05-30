@@ -4,7 +4,7 @@
 process.env['SDL_JOYSTICK_RAWINPUT'] = '1'
 process.env['SDL_JOYSTICK_RAWINPUT_CORRELATE_XINPUT'] = '1'
 
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, Menu } from 'electron'
 import { join } from 'path'
 import { registerIpcHandlers, setWebContents } from './ipc-handlers'
 
@@ -27,6 +27,26 @@ function createWindow(): void {
 
   setWebContents(win.webContents)
 
+  // Disable default shortcuts like Ctrl+W, Ctrl+A, Ctrl+R, F5, Ctrl+N globally
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+
+    const isCtrlOrMeta = input.control || input.meta
+    const key = input.key.toLowerCase()
+
+    // Disable Ctrl+W (Close window) and Ctrl+A (Select all)
+    if (isCtrlOrMeta && (key === 'w' || key === 'a')) {
+      event.preventDefault()
+      return
+    }
+
+    // Disable Ctrl+R (Reload), Ctrl+N (New window), F5 (Reload)
+    if ((isCtrlOrMeta && (key === 'r' || key === 'n')) || input.key === 'F5') {
+      event.preventDefault()
+      return
+    }
+  })
+
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: 'deny' }
@@ -41,6 +61,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null)
   registerIpcHandlers()
   createWindow()
 
