@@ -17,12 +17,17 @@ function startInputSuppression(): void {
   if (!webContents || _suppressInputHandler) return
   _suppressInputHandler = (event, input) => {
     if (input.type !== 'keyDown') return
-    // Block shortcuts that could close or disrupt the window during capture
+    // During keyboard capture, block ALL modifier combos so Electron never acts
+    // on them before uiohook can capture the combo (e.g. Ctrl+W would close
+    // the window, Ctrl+R would reload, Ctrl+A would select-all, etc.)
     const ctrl = input.control || input.meta
-    if (ctrl && ['w', 'q', 'r', 'n', 't'].includes(input.key.toLowerCase())) {
+    const alt = input.alt
+    if (ctrl || alt) {
       event.preventDefault()
+      return
     }
-    if (input.key === 'F5' || (ctrl && input.key === 'F5')) {
+    // Also block F-keys that Chromium/Electron handles natively
+    if (/^F\d{1,2}$/.test(input.key)) {
       event.preventDefault()
     }
   }
@@ -84,6 +89,7 @@ export function registerIpcHandlers(): void {
   handle('controller:monitor-stop', () => controllerService.stopMonitor())
 
   handle('keyboard:capture-start', () => {
+    startInputSuppression()
     keyboardService.startCapture((combo) => {
       stopInputSuppression()
       webContents?.send('keyboard:key-captured', combo)
