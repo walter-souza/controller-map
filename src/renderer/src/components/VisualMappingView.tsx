@@ -8,7 +8,7 @@ const LBL_L_X    = 17
 const LBL_R_X    = 83
 const ELBOW_L_X  = 22
 const ELBOW_R_X  = 78
-const MIN_GAP    = 6
+const MIN_GAP    = 10.5
 const DOT_RX     = 0.38
 const DOT_RY     = 0.98
 
@@ -420,7 +420,7 @@ export default function VisualMappingView({
                   onMouseLeave={() => setHoveredKey(null)}
                   className={[
                     'flex items-center gap-2 text-[11px] font-mono whitespace-nowrap',
-                    'rounded-md border p-1 shadow-md transition-all duration-150 disabled:opacity-40 backdrop-blur-md',
+                    'rounded-md border px-1.5 py-[2.5px] shadow-md transition-all duration-150 disabled:opacity-40 backdrop-blur-md',
                     labelClass(input, mapped),
                     hovered ? 'scale-105 shadow-lg' : 'scale-100',
                   ].join(' ')}
@@ -485,7 +485,7 @@ export default function VisualMappingView({
                   onMouseLeave={() => setHoveredKey(null)}
                   className={[
                     'flex items-center gap-2 text-[11px] font-mono whitespace-nowrap',
-                    'rounded-md border p-1 shadow-md transition-all duration-150 disabled:opacity-40 backdrop-blur-md',
+                    'rounded-md border px-1.5 py-[2.5px] shadow-md transition-all duration-150 disabled:opacity-40 backdrop-blur-md',
                     labelClass(input, mapped),
                     hovered ? 'scale-105 shadow-lg' : 'scale-100',
                   ].join(' ')}
