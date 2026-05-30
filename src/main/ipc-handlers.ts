@@ -17,12 +17,17 @@ function startInputSuppression(): void {
   if (!webContents || _suppressInputHandler) return
   _suppressInputHandler = (event, input) => {
     if (input.type !== 'keyDown') return
-    // Block shortcuts that could close or disrupt the window during capture
+    // During keyboard capture, block ALL modifier combos so Electron never acts
+    // on them before uiohook can capture the combo (e.g. Ctrl+W would close
+    // the window, Ctrl+R would reload, Ctrl+A would select-all, etc.)
     const ctrl = input.control || input.meta
-    if (ctrl && ['w', 'q', 'r', 'n', 't'].includes(input.key.toLowerCase())) {
+    const alt = input.alt
+    if (ctrl || alt) {
       event.preventDefault()
+      return
     }
-    if (input.key === 'F5' || (ctrl && input.key === 'F5')) {
+    // Also block F-keys that Chromium/Electron handles natively
+    if (/^F\d{1,2}$/.test(input.key)) {
       event.preventDefault()
     }
   }
@@ -84,6 +89,7 @@ export function registerIpcHandlers(): void {
   handle('controller:monitor-stop', () => controllerService.stopMonitor())
 
   handle('keyboard:capture-start', () => {
+    startInputSuppression()
     keyboardService.startCapture((combo) => {
       stopInputSuppression()
       webContents?.send('keyboard:key-captured', combo)
@@ -123,14 +129,6 @@ export function registerIpcHandlers(): void {
 
   handle('mapper:is-active', () => activeMapper?.isActive ?? false)
 
-  handle('mappings:load', (deviceId) => persistence.loadMappings(deviceId))
-
-  handle('mappings:save', (deviceId, mappings) => persistence.saveMappings(deviceId, mappings))
-
-  handle('angle-mappings:load', (deviceId) => persistence.loadAngleMappings(deviceId))
-
-  handle('angle-mappings:save', (deviceId, configs) => persistence.saveAngleMappings(deviceId, configs))
-
   handle('settings:load', () => persistence.loadRepeatSettings())
 
   handle('settings:save', (settings) => persistence.saveRepeatSettings(settings))
@@ -138,4 +136,61 @@ export function registerIpcHandlers(): void {
   handle('config:load', () => persistence.loadConfig())
 
   handle('config:save', (config) => persistence.saveConfig(config))
+
+  // ── Mapping Profiles ──────────────────────────────────────────────────────
+
+  handle('profiles:load-all', () => persistence.loadAllProfiles())
+
+  handle('profiles:set-active', (id) => {
+    const { profiles } = persistence.loadAllProfiles()
+    if (!profiles.find((p) => p.id === id)) return
+    persistence.setActiveProfileId(id)
+  })
+
+  handle('profiles:create', (name) => {
+    const { profiles } = persistence.loadAllProfiles()
+    const newProfile = {
+      id: crypto.randomUUID(),
+      name: name.trim() || 'Novo perfil',
+      mappings: [],
+      angleMappings: [],
+      createdAt: new Date().toISOString(),
+    }
+    const updated = [...profiles, newProfile]
+    persistence.saveAllProfiles(updated)
+    persistence.setActiveProfileId(newProfile.id)
+    return { profiles: updated, activeProfileId: newProfile.id }
+  })
+
+  handle('profiles:update', (profile) => {
+    const { profiles } = persistence.loadAllProfiles()
+    const updated = profiles.map((p) => (p.id === profile.id ? profile : p))
+    persistence.saveAllProfiles(updated)
+  })
+
+  handle('profiles:delete', (id) => {
+    const { profiles, activeProfileId } = persistence.loadAllProfiles()
+    if (profiles.length <= 1) return { profiles, activeProfileId }
+    const updated = profiles.filter((p) => p.id !== id)
+    persistence.saveAllProfiles(updated)
+    const newActiveId = id === activeProfileId ? updated[0].id : activeProfileId
+    persistence.setActiveProfileId(newActiveId)
+    return { profiles: updated, activeProfileId: newActiveId }
+  })
+
+  handle('profiles:export', async (id) => {
+    const { profiles } = persistence.loadAllProfiles()
+    const profile = profiles.find((p) => p.id === id)
+    if (!profile) return false
+    return persistence.exportProfileToFile(profile)
+  })
+
+  handle('profiles:import', async () => {
+    const imported = await persistence.importProfileFromFile()
+    if (!imported) return null
+    const { profiles } = persistence.loadAllProfiles()
+    const updated = [...profiles, imported]
+    persistence.saveAllProfiles(updated)
+    return imported
+  })
 }

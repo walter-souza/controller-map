@@ -418,7 +418,7 @@ export class Mapper {
       // SDL Y axis positive=down; negate so 90°=up matches visual circle
       const angleDeg = ((Math.atan2(-vy, vx) * 180) / Math.PI + 360) % 360
       const region = _findAngleRegion(cfg, angleDeg)
-      if (!region || !region.key_combo) continue
+      if (!region || region.key_combos.length === 0) continue
 
       const prevRegionId = this._angleHeld.get(cfg.id)
       if (prevRegionId !== region.id) {
@@ -429,7 +429,7 @@ export class Mapper {
         this._angleHeld.set(cfg.id, region.id)
       }
 
-      this._handleHeld(stateKey, region.key_combo)
+      this._handleHeldMulti(stateKey, region.key_combos)
     }
   }
 
@@ -454,6 +454,28 @@ export class Mapper {
     if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
       this._lastFire.set(key, now)
       keyboardService.pressCombo(combo).catch(() => {})
+    }
+  }
+
+  private _handleHeldMulti(key: string, combos: string[]): void {
+    const now = Date.now()
+
+    if (!this._heldKeys.has(key)) {
+      this._heldKeys.add(key)
+      this._pressTime.set(key, now)
+      this._lastFire.set(key, now)
+      combos.forEach((c) => keyboardService.pressCombo(c).catch(() => {}))
+      return
+    }
+
+    const pressedAt = this._pressTime.get(key) ?? now
+    const lastFiredAt = this._lastFire.get(key) ?? now
+    const elapsed = (now - pressedAt) / 1000
+    const sinceLast = (now - lastFiredAt) / 1000
+
+    if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
+      this._lastFire.set(key, now)
+      combos.forEach((c) => keyboardService.pressCombo(c).catch(() => {}))
     }
   }
 }

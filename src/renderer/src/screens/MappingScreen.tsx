@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AngleMappingConfig, CaptureResult, DeviceInfo, Mapping, RepeatSettings } from '../../../shared/models'
+import type { AngleMappingConfig, CaptureResult, DeviceInfo, Mapping, MappingProfile, RepeatSettings, StickDef } from '../../../shared/models'
 import AddMappingDialog from '../components/AddMappingDialog'
 import AngleMappingDialog from '../components/AngleMappingDialog'
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog'
+import ProfileNameDialog from '../components/ProfileNameDialog'
 import SettingsDialog from '../components/SettingsDialog'
 import VisualMappingView from '../components/VisualMappingView'
 import { detectProfile } from '../data/profiles'
@@ -49,8 +50,19 @@ function controlLabel(m: Mapping, profile: ControllerProfile): string {
 }
 
 export default function MappingScreen({ device, onBack }: Props) {
-  const [mappings, setMappings] = useState<Mapping[]>([])
-  const [angleMappings, setAngleMappings] = useState<AngleMappingConfig[]>([])
+  // ── Profile state ───────────────────────────────────────────────────────────
+  const [profiles, setProfiles] = useState<MappingProfile[]>([])
+  const [activeProfileId, setActiveProfileId] = useState<string>('')
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showProfileCreate, setShowProfileCreate] = useState(false)
+  const [renameProfile, setRenameProfile] = useState<MappingProfile | null>(null)
+  const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null)
+
+  const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? null
+  const mappings: Mapping[] = activeProfile?.mappings ?? []
+  const angleMappings: AngleMappingConfig[] = activeProfile?.angleMappings ?? []
+
+  // ── Other state ─────────────────────────────────────────────────────────────
   const [settings, setSettings] = useState<RepeatSettings>({ initial_delay_ms: 400, repeat_interval_ms: 50 })
   const [isPlaying, setIsPlaying] = useState(false)
   const [pulse, setPulse] = useState(true)
@@ -61,11 +73,12 @@ export default function MappingScreen({ device, onBack }: Props) {
   const [showSettings, setShowSettings] = useState(false)
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null)
   const [deleteAngleId, setDeleteAngleId] = useState<string | null>(null)
+  const [pendingAngleStick, setPendingAngleStick] = useState<StickDef | null>(null)
   const pulseRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Profile detection: auto-identify known controllers by device name
-  const profile: ControllerProfile = detectProfile(device.name)
-  const [viewMode, setViewMode] = useState<'visual' | 'list'>('visual')
+  const controllerProfile: ControllerProfile | null = detectProfile(device.name)
+  const [viewMode, setViewMode] = useState<'visual' | 'list'>(controllerProfile ? 'visual' : 'list')
   const [activeInputs, setActiveInputs] = useState<Set<string>>(new Set())
   // Raw axis values for smooth joystick pad visualization (dot position)
   const [axisValues, setAxisValues] = useState<Record<number, number>>({})
@@ -75,7 +88,7 @@ export default function MappingScreen({ device, onBack }: Props) {
 
   // Real-time input monitor — active when visual view is visible
   useEffect(() => {
-    if (viewMode !== 'visual') {
+    if (!controllerProfile || viewMode !== 'visual') {
       setActiveInputs(new Set())
       setAxisValues({})
       axisValuesRef.current = {}
@@ -117,14 +130,16 @@ export default function MappingScreen({ device, onBack }: Props) {
       setAxisValues({})
       axisValuesRef.current = {}
     }
-  }, [viewMode, device.id])
+  }, [controllerProfile, viewMode, device.id])
 
-  // Load data on mount
+  // Load profiles + settings on mount
   useEffect(() => {
-    window.api.invoke('mappings:load', device.id).then(setMappings)
-    window.api.invoke('angle-mappings:load', device.id).then(setAngleMappings)
+    window.api.invoke('profiles:load-all').then(({ profiles: p, activeProfileId: id }) => {
+      setProfiles(p)
+      setActiveProfileId(id)
+    })
     window.api.invoke('settings:load').then(setSettings)
-  }, [device.id])
+  }, [])
 
   // Listen for disconnect event
   useEffect(() => {
@@ -146,21 +161,88 @@ export default function MappingScreen({ device, onBack }: Props) {
     }
   }, [isPlaying])
 
+  // ── Profile persistence helpers ─────────────────────────────────────────────
+
+  const updateActiveProfile = useCallback(
+    (updater: (p: MappingProfile) => MappingProfile) => {
+      if (!activeProfile) return
+      const updated = updater(activeProfile)
+      const nextProfiles = profiles.map((p) => (p.id === updated.id ? updated : p))
+      setProfiles(nextProfiles)
+      window.api.invoke('profiles:update', updated)
+    },
+    [activeProfile, profiles],
+  )
+
   const saveMappings = useCallback(
     (next: Mapping[]) => {
-      setMappings(next)
-      window.api.invoke('mappings:save', device.id, next)
+      updateActiveProfile((p) => ({ ...p, mappings: next }))
     },
-    [device.id],
+    [updateActiveProfile],
   )
 
   const saveAngleMappings = useCallback(
     (next: AngleMappingConfig[]) => {
-      setAngleMappings(next)
-      window.api.invoke('angle-mappings:save', device.id, next)
+      updateActiveProfile((p) => ({ ...p, angleMappings: next }))
     },
-    [device.id],
+    [updateActiveProfile],
   )
+
+  // ── Profile actions ─────────────────────────────────────────────────────────
+
+  const switchProfile = async (id: string) => {
+    await window.api.invoke('profiles:set-active', id)
+    setActiveProfileId(id)
+    setShowProfileMenu(false)
+    if (isPlaying) {
+      await window.api.invoke('mapper:stop')
+      setIsPlaying(false)
+    }
+  }
+
+  const createProfile = async (name: string) => {
+    const result = await window.api.invoke('profiles:create', name)
+    setProfiles(result.profiles)
+    setActiveProfileId(result.activeProfileId)
+    setShowProfileCreate(false)
+  }
+
+  const renameActiveProfile = async (name: string) => {
+    if (!renameProfile) return
+    const updated = { ...renameProfile, name }
+    const nextProfiles = profiles.map((p) => (p.id === updated.id ? updated : p))
+    setProfiles(nextProfiles)
+    window.api.invoke('profiles:update', updated)
+    setRenameProfile(null)
+  }
+
+  const handleDeleteProfile = async (id: string) => {
+    const result = await window.api.invoke('profiles:delete', id)
+    setProfiles(result.profiles)
+    setActiveProfileId(result.activeProfileId)
+    setDeleteProfileId(null)
+    if (isPlaying) {
+      await window.api.invoke('mapper:stop')
+      setIsPlaying(false)
+    }
+  }
+
+  const handleExportProfile = async () => {
+    if (activeProfile) {
+      await window.api.invoke('profiles:export', activeProfile.id)
+      setShowProfileMenu(false)
+    }
+  }
+
+  const handleImportProfile = async () => {
+    const imported = await window.api.invoke('profiles:import')
+    if (imported) {
+      setProfiles((prev) => [...prev, imported])
+    }
+    setShowProfileMenu(false)
+  }
+
+  // ── Mapping actions ─────────────────────────────────────────────────────────
 
   const handlePlay = async () => {
     if (mappings.length === 0 && angleMappings.length === 0) return
@@ -237,6 +319,83 @@ export default function MappingScreen({ device, onBack }: Props) {
         </button>
       </div>
 
+      {/* Profile bar */}
+      <div className="bg-slate-700 px-6 py-2 flex items-center gap-3 relative">
+        <span className="text-slate-400 text-xs font-medium">Perfil:</span>
+        <div className="relative">
+          <button
+            onClick={() => setShowProfileMenu((v) => !v)}
+            className="flex items-center gap-1.5 bg-slate-600 hover:bg-slate-500 text-white text-xs px-3 py-1.5 rounded-md transition-colors min-w-[140px] justify-between"
+          >
+            <span className="truncate max-w-[120px]">{activeProfile?.name ?? '…'}</span>
+            <span className="text-slate-300">▾</span>
+          </button>
+          {showProfileMenu && (
+            <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-50 min-w-[220px]">
+              {/* Profile list */}
+              <div className="py-1 border-b border-slate-100">
+                {profiles.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => switchProfile(p.id)}
+                    className={`w-full text-left px-4 py-2 text-xs flex items-center gap-2 hover:bg-slate-50 transition-colors ${p.id === activeProfileId ? 'font-semibold text-blue-600' : 'text-slate-700'}`}
+                  >
+                    {p.id === activeProfileId && <span>✓</span>}
+                    {p.id !== activeProfileId && <span className="w-3" />}
+                    <span className="truncate">{p.name}</span>
+                  </button>
+                ))}
+              </div>
+              {/* Actions */}
+              <div className="py-1 border-b border-slate-100">
+                <button
+                  onClick={() => { setShowProfileMenu(false); setShowProfileCreate(true) }}
+                  className="w-full text-left px-4 py-2 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  ＋ Novo perfil
+                </button>
+                {activeProfile && (
+                  <button
+                    onClick={() => { setShowProfileMenu(false); setRenameProfile(activeProfile) }}
+                    className="w-full text-left px-4 py-2 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
+                  >
+                    ✎ Renomear perfil
+                  </button>
+                )}
+                {activeProfile && profiles.length > 1 && (
+                  <button
+                    onClick={() => { setShowProfileMenu(false); setDeleteProfileId(activeProfile.id) }}
+                    className="w-full text-left px-4 py-2 text-xs text-red-500 hover:bg-red-50 transition-colors"
+                  >
+                    ✕ Excluir perfil
+                  </button>
+                )}
+              </div>
+              {/* Import / Export */}
+              <div className="py-1">
+                <button
+                  onClick={handleExportProfile}
+                  className="w-full text-left px-4 py-2 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  ↓ Exportar perfil
+                </button>
+                <button
+                  onClick={handleImportProfile}
+                  className="w-full text-left px-4 py-2 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  ↑ Importar perfil
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Close profile menu on outside click */}
+        {showProfileMenu && (
+          <div className="fixed inset-0 z-40" onClick={() => setShowProfileMenu(false)} />
+        )}
+      </div>
+
       {/* Status bar */}
       <div className="bg-white border-b border-slate-200 px-6 py-2 flex items-center gap-4">
         <div className="flex items-center gap-1.5">
@@ -244,7 +403,8 @@ export default function MappingScreen({ device, onBack }: Props) {
           <span className={`text-xs font-medium ${statusTextColor}`}>{statusText}</span>
         </div>
         <div className="flex-1" />
-        {/* View mode toggle — always available */}
+        {/* View mode toggle — only when controller profile detected */}
+        {controllerProfile && (
           <div className="flex rounded-md border border-slate-200 overflow-hidden text-xs">
             <button
               onClick={() => setViewMode('visual')}
@@ -259,6 +419,7 @@ export default function MappingScreen({ device, onBack }: Props) {
               ☰ Lista
             </button>
           </div>
+        )}
         <button
           onClick={openAddFreeCapture}
           disabled={isPlaying}
@@ -267,7 +428,7 @@ export default function MappingScreen({ device, onBack }: Props) {
           + Botão
         </button>
         <button
-          onClick={() => setShowAngleAdd(true)}
+          onClick={() => { setPendingAngleStick(null); setShowAngleAdd(true) }}
           disabled={isPlaying}
           className="btn-ctrl text-xs disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -289,9 +450,9 @@ export default function MappingScreen({ device, onBack }: Props) {
       </div>
 
       {/* Main content: visual or list view */}
-      {viewMode === 'visual' ? (
+      {controllerProfile && viewMode === 'visual' ? (
         <VisualMappingView
-          profile={profile}
+          profile={controllerProfile}
           mappings={mappings}
           angleMappings={angleMappings}
           isPlaying={isPlaying}
@@ -303,24 +464,12 @@ export default function MappingScreen({ device, onBack }: Props) {
             const existing = angleMappings.find(
               (a) => a.axis_x === stick.axis_x && a.axis_y === stick.axis_y
             )
-            setEditingAngle(existing ?? {
-              id: crypto.randomUUID(),
-              axis_x: stick.axis_x,
-              axis_y: stick.axis_y,
-              deadzone: 0.2,
-              nodes: [
-                { id: crypto.randomUUID(), angle: 45 },
-                { id: crypto.randomUUID(), angle: 135 },
-                { id: crypto.randomUUID(), angle: 225 },
-                { id: crypto.randomUUID(), angle: 315 },
-              ],
-              regions: [
-                { id: crypto.randomUUID(), key_combo: '' },
-                { id: crypto.randomUUID(), key_combo: '' },
-                { id: crypto.randomUUID(), key_combo: '' },
-                { id: crypto.randomUUID(), key_combo: '' },
-              ],
-            })
+            if (existing) {
+              setEditingAngle(existing)
+            } else {
+              setPendingAngleStick(stick)
+              setShowAngleAdd(true)
+            }
           }}
         />
       ) : (
@@ -333,7 +482,7 @@ export default function MappingScreen({ device, onBack }: Props) {
         )}
         {mappings.map((m, i) => (
           <div key={i} className="card px-4 py-3 flex items-center gap-3">
-            <span className="badge-ctrl">{controlLabel(m, profile)}</span>
+            <span className="badge-ctrl">{controlLabel(m, controllerProfile ?? { inputs: [] } as ControllerProfile)}</span>
             <span className="text-slate-300 text-sm">──►</span>
             <span className="badge-key">{m.key_combo}</span>
             <div className="flex-1" />
@@ -358,7 +507,7 @@ export default function MappingScreen({ device, onBack }: Props) {
                     Eixo {cfg.axis_x} × Eixo {cfg.axis_y}
                   </div>
                   <div className="text-xs text-slate-400 truncate">
-                    {cfg.regions.map((r) => r.key_combo || '?').join(' / ')}
+                    {cfg.regions.map((r) => r.key_combos.filter(Boolean).join('+') || '?').join(' / ')}
                     <span className="ml-1 text-slate-300">· {cfg.regions.length} regiões</span>
                   </div>
                 </div>
@@ -389,7 +538,7 @@ export default function MappingScreen({ device, onBack }: Props) {
           existingMappings={mappings}
           presetInput={addPreset}
           resolveInputName={(type, buttonId, axisDirection) =>
-            resolveButtonName(profile, type, buttonId, axisDirection)
+            resolveButtonName(controllerProfile ?? { inputs: [] } as ControllerProfile, type, buttonId, axisDirection)
           }
           onConfirm={(m) => {
             handleMappingAdded(m)
@@ -405,8 +554,10 @@ export default function MappingScreen({ device, onBack }: Props) {
       {(showAngleAdd || editingAngle) && (
         <AngleMappingDialog
           initial={editingAngle ?? undefined}
-          onConfirm={handleAngleSaved}
-          onCancel={() => { setShowAngleAdd(false); setEditingAngle(null) }}
+          defaultAxisX={pendingAngleStick?.axis_x}
+          defaultAxisY={pendingAngleStick?.axis_y}
+          onConfirm={(cfg) => { handleAngleSaved(cfg); setPendingAngleStick(null) }}
+          onCancel={() => { setShowAngleAdd(false); setEditingAngle(null); setPendingAngleStick(null) }}
         />
       )}
       {deleteIndex !== null && (
@@ -419,6 +570,27 @@ export default function MappingScreen({ device, onBack }: Props) {
         <DeleteConfirmDialog
           onConfirm={() => confirmDeleteAngle(deleteAngleId)}
           onCancel={() => setDeleteAngleId(null)}
+        />
+      )}
+      {deleteProfileId !== null && (
+        <DeleteConfirmDialog
+          onConfirm={() => handleDeleteProfile(deleteProfileId)}
+          onCancel={() => setDeleteProfileId(null)}
+        />
+      )}
+      {showProfileCreate && (
+        <ProfileNameDialog
+          mode="create"
+          onConfirm={createProfile}
+          onCancel={() => setShowProfileCreate(false)}
+        />
+      )}
+      {renameProfile && (
+        <ProfileNameDialog
+          mode="rename"
+          initialName={renameProfile.name}
+          onConfirm={renameActiveProfile}
+          onCancel={() => setRenameProfile(null)}
         />
       )}
       {showSettings && (
@@ -434,3 +606,4 @@ export default function MappingScreen({ device, onBack }: Props) {
     </div>
   )
 }
+

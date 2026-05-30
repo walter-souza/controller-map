@@ -43,7 +43,7 @@ export interface AngleNode {
 
 export interface AngleRegion {
   id: string
-  key_combo: string
+  key_combos: string[]
 }
 
 export interface AngleMappingConfig {
@@ -89,6 +89,14 @@ export interface ControllerProfile {
   imageUrl: string        // import URL (from renderer assets)
   inputs: ControllerInputDef[]
   sticks?: StickDef[]     // joystick stick definitions for pad visualization
+}
+
+export interface MappingProfile {
+  id: string
+  name: string
+  mappings: Mapping[]
+  angleMappings: AngleMappingConfig[]
+  createdAt: string // ISO timestamp
 }
 
 // Controller capture result
