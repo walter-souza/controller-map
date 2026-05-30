@@ -418,6 +418,7 @@ export default function MappingScreen({ device, onBack }: Props) {
               ☰ Lista
             </button>
           </div>
+        )}
         <button
           onClick={openAddFreeCapture}
           disabled={isPlaying}
