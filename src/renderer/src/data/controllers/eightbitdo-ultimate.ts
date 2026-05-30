@@ -9,6 +9,10 @@ export const eightbitdoUltimate: ControllerProfile = {
   name: '8BitDo Ultimate',
   namePatterns: ['8bitdo', '8bit do', 'ultimate wireless', 'ultimate 2'],
   imageUrl: controllerImage,
+  sticks: [
+    { name: 'LS', axis_x: 0, axis_y: 1 },
+    { name: 'RS', axis_x: 2, axis_y: 3 },
+  ],
   inputs: [
     // ── Shoulder buttons ──────────────────────────────────────────────────
     { type: 'axis',   axis_id: 4, direction:  1, name: 'L2',     x: 20.75, y: 11.5 },
@@ -16,8 +20,12 @@ export const eightbitdoUltimate: ControllerProfile = {
     { type: 'axis',   axis_id: 5, direction:  1, name: 'R2',     x: 79.25, y: 11.5 },
     { type: 'button', id: 5,                     name: 'R1',     x: 78.75, y: 21.5 },
 
-    // ── Left stick ────────────────────────────────────────────────────────
+    // ── Left stick axes ───────────────────────────────────────────────────
+    { type: 'axis',   axis_id: 1, direction: -1, name: 'LS↑',   x: 38.75, y: 37.5 },
+    { type: 'axis',   axis_id: 0, direction: -1, name: 'LS←',   x: 31.5,  y: 45.4 },
     { type: 'button', id: 8,                     name: 'L3',     x: 38.75, y: 45.4 },
+    { type: 'axis',   axis_id: 0, direction:  1, name: 'LS→',   x: 46.0,  y: 45.4 },
+    { type: 'axis',   axis_id: 1, direction:  1, name: 'LS↓',   x: 38.75, y: 53.0 },
 
     // ── D-pad ─────────────────────────────────────────────────────────────
     { type: 'button', id: 11,                    name: 'D-Up',   x: 27.5,  y: 52.3 },
@@ -36,7 +44,11 @@ export const eightbitdoUltimate: ControllerProfile = {
     { type: 'button', id: 0,                     name: 'A',      x: 73.0,  y: 55.4 },
     { type: 'button', id: 2,                     name: 'X',      x: 67.25, y: 46.9 },
 
-    // ── Right stick ───────────────────────────────────────────────────────
+    // ── Right stick axes ──────────────────────────────────────────────────
+    { type: 'axis',   axis_id: 3, direction: -1, name: 'RS↑',   x: 64.5,  y: 54.5 },
+    { type: 'axis',   axis_id: 2, direction: -1, name: 'RS←',   x: 57.5,  y: 62.3 },
     { type: 'button', id: 9,                     name: 'R3',     x: 64.5,  y: 62.3 },
+    { type: 'axis',   axis_id: 2, direction:  1, name: 'RS→',   x: 71.5,  y: 62.3 },
+    { type: 'axis',   axis_id: 3, direction:  1, name: 'RS↓',   x: 64.5,  y: 70.5 },
   ],
 }

@@ -9,6 +9,8 @@ interface Props {
   onCancel: () => void
   // When provided (from visual mapping view): skip chord-capture and use this as the primary input
   presetInput?: CaptureResult
+  // Resolve profile display name for a captured input (button "A", axis "LS↑", etc.)
+  resolveInputName?: (type: string, buttonId: number, axisDirection?: number) => string
 }
 
 // Capture phase state machine:
@@ -16,7 +18,7 @@ interface Props {
 // - Preset flow:  key → ready  (chord-capture skipped)
 type CapturePhase = 'chord-capture' | 'key' | 'ready'
 
-export default function AddMappingDialog({ deviceId, existingMappings, onConfirm, onCancel, presetInput }: Props) {
+export default function AddMappingDialog({ deviceId, existingMappings, onConfirm, onCancel, presetInput, resolveInputName }: Props) {
   const [phase, setPhase] = useState<CapturePhase>(presetInput ? 'key' : 'chord-capture')
   // When presetInput is given, it's the sole captured input (no chord)
   const [capturedInputs, setCapturedInputs] = useState<CaptureResult[]>(presetInput ? [presetInput] : [])
@@ -27,7 +29,13 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
     if (phase !== 'chord-capture') return
     window.api.invoke('controller:chord-capture-start', deviceId)
     const off = window.api.on('controller:chord-captured', (results) => {
-      setCapturedInputs(results)
+      const enriched = resolveInputName
+        ? results.map((r) => ({
+            ...r,
+            button_name: resolveInputName(r.type, r.button_id, r.type === 'axis' ? r.axis_direction : undefined),
+          }))
+        : results
+      setCapturedInputs(enriched)
       // Auto-proceed to key capture
       setPhase('key')
     })
