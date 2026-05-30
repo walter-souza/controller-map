@@ -1,7 +1,7 @@
 import { dialog } from 'electron'
 import { readFileSync, writeFileSync } from 'fs'
 import Store from 'electron-store'
-import type { AngleMappingConfig, AppConfig, Mapping, MappingProfile, RepeatSettings } from '../shared/models'
+import type { AngleMappingConfig, AngleRegion, AppConfig, Mapping, MappingProfile, RepeatSettings } from '../shared/models'
 
 interface StoreSchema {
   config: AppConfig
@@ -63,6 +63,21 @@ function ensureProfiles(): { profiles: MappingProfile[]; activeProfileId: string
     store.delete('mappings' as keyof StoreSchema)
     store.delete('angleMappings' as keyof StoreSchema)
   }
+
+  // ── Migrate legacy key_combo (string) → key_combos (string[]) ────────────
+  let migrated = false
+  profiles = profiles.map((p) => ({
+    ...p,
+    angleMappings: p.angleMappings.map((cfg) => ({
+      ...cfg,
+      regions: cfg.regions.map((r: AngleRegion & { key_combo?: string }) => {
+        if (Array.isArray(r.key_combos)) return r
+        migrated = true
+        return { id: r.id, key_combos: r.key_combo ? [r.key_combo] : [] }
+      }),
+    })),
+  }))
+  if (migrated) store.set('profiles', profiles)
 
   // ── Ensure at least one profile exists ───────────────────────────────────
   if (!profiles || profiles.length === 0) {

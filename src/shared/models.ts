@@ -43,7 +43,7 @@ export interface AngleNode {
 
 export interface AngleRegion {
   id: string
-  key_combo: string
+  key_combos: string[]
 }
 
 export interface AngleMappingConfig {

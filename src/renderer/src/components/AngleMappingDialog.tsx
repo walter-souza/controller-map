@@ -23,7 +23,7 @@ function makeNodes(angles: number[]) {
 }
 
 function makeRegions(combos: string[]) {
-  return combos.map((key_combo) => ({ id: crypto.randomUUID(), key_combo }))
+  return combos.map((key_combo) => ({ id: crypto.randomUUID(), key_combos: [key_combo] }))
 }
 
 function createFromPreset(preset: Preset, existingId?: string): AngleMappingConfig {
@@ -59,7 +59,7 @@ function createFromPreset(preset: Preset, existingId?: string): AngleMappingConf
 }
 
 function detectPreset(cfg: AngleMappingConfig): Preset {
-  const combos = cfg.regions.map((r) => r.key_combo).join(',')
+  const combos = cfg.regions.map((r) => r.key_combos[0] ?? '').join(',')
   if (combos === 'w,a,s,d') return '4-wasd'
   if (combos === 'e,w,q,a,z,x,c,d') return '8-wasdqezc'
   return 'custom'
@@ -100,7 +100,7 @@ export default function AngleMappingDialog({ initial, defaultAxisX, defaultAxisY
       window.api.invoke('keyboard:capture-stop')
       setConfig((prev) => {
         const newRegions = prev.regions.map((r, i) =>
-          i === capturingIdx ? { ...r, key_combo: combo } : r,
+          i === capturingIdx ? { ...r, key_combos: [...r.key_combos, combo] } : r,
         )
         return { ...prev, regions: newRegions }
       })
@@ -120,7 +120,7 @@ export default function AngleMappingDialog({ initial, defaultAxisX, defaultAxisY
       setConfig((prev) => ({
         ...prev,
         nodes: [{ id: crypto.randomUUID(), angle: 0 }],
-        regions: [{ id: crypto.randomUUID(), key_combo: '' }],
+        regions: [{ id: crypto.randomUUID(), key_combos: [] }],
       }))
       return
     }
@@ -144,7 +144,7 @@ export default function AngleMappingDialog({ initial, defaultAxisX, defaultAxisY
     const newNodes = [...config.nodes]
     const newRegions = [...config.regions]
     newNodes.splice(maxIdx + 1, 0, { id: crypto.randomUUID(), angle: midAngle })
-    newRegions.splice(maxIdx + 1, 0, { id: crypto.randomUUID(), key_combo: '' })
+    newRegions.splice(maxIdx + 1, 0, { id: crypto.randomUUID(), key_combos: [] })
 
     setConfig((prev) => ({ ...prev, nodes: newNodes, regions: newRegions }))
   }
@@ -157,7 +157,16 @@ export default function AngleMappingDialog({ initial, defaultAxisX, defaultAxisY
     setConfig((prev) => ({ ...prev, nodes: newNodes, regions: newRegions }))
   }
 
-  const canSave = config.nodes.length >= 1 && config.regions.some((r) => r.key_combo.trim())
+  const canSave = config.nodes.length >= 1 && config.regions.some((r) => r.key_combos.some((k) => k.trim()))
+
+  const removeCombo = (regionIdx: number, comboIdx: number) => {
+    setConfig((prev) => {
+      const newRegions = prev.regions.map((r, i) =>
+        i === regionIdx ? { ...r, key_combos: r.key_combos.filter((_, ci) => ci !== comboIdx) } : r,
+      )
+      return { ...prev, regions: newRegions }
+    })
+  }
 
   return (
     <Modal title="Mapeamento por Ângulo" onClose={onCancel}>
@@ -250,15 +259,27 @@ export default function AngleMappingDialog({ initial, defaultAxisX, defaultAxisY
                     Pressione as teclas…
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1">
-                    <span className="badge-key text-xs flex-1 truncate min-h-[24px] flex items-center">
-                      {region.key_combo || <span className="text-slate-400 italic">vazio</span>}
-                    </span>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {region.key_combos.length === 0 && (
+                      <span className="text-slate-400 italic text-xs">vazio</span>
+                    )}
+                    {region.key_combos.map((k, ki) => (
+                      <span key={ki} className="badge-key text-xs flex items-center gap-1 pl-2 pr-1 py-0.5">
+                        {k}
+                        <button
+                          onClick={() => removeCombo(i, ki)}
+                          className="text-slate-400 hover:text-red-500 leading-none"
+                          title="Remover tecla"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
                     <button
                       onClick={() => setCapturingIdx(i)}
                       className="btn-ghost text-xs px-2 py-0.5 flex-shrink-0"
                     >
-                      Capturar
+                      + Tecla
                     </button>
                   </div>
                 )}

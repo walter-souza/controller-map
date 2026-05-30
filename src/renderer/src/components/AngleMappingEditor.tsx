@@ -124,7 +124,7 @@ export default function AngleMappingEditor({ config, onChange }: Props) {
         const nextAngle = config.nodes[(i + 1) % n].angle
         const mid = midAngleBetween(node.angle, nextAngle)
         const { x, y } = toSvg(mid, LABEL_R)
-        const combo = config.regions[i]?.key_combo || ''
+        const combo = config.regions[i]?.key_combos[0] ?? ''
         if (!combo) return null
         return (
           <text

@@ -507,7 +507,7 @@ export default function MappingScreen({ device, onBack }: Props) {
                     Eixo {cfg.axis_x} × Eixo {cfg.axis_y}
                   </div>
                   <div className="text-xs text-slate-400 truncate">
-                    {cfg.regions.map((r) => r.key_combo || '?').join(' / ')}
+                    {cfg.regions.map((r) => r.key_combos.filter(Boolean).join('+') || '?').join(' / ')}
                     <span className="ml-1 text-slate-300">· {cfg.regions.length} regiões</span>
                   </div>
                 </div>

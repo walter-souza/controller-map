@@ -189,7 +189,7 @@ function computePadSectorsFromAngleMapping(
       isActive = offset < span && offset >= 0
     }
 
-    const isMapped = (cfg.regions[i]?.key_combo ?? '').trim().length > 0
+    const isMapped = (cfg.regions[i]?.key_combos ?? []).some((k) => k.trim().length > 0)
 
     // Convert math angles → SVG: negate + swap start/end (flip Y axis, CCW→CW)
     const svgStart = (360 - nextAngle + 360) % 360
