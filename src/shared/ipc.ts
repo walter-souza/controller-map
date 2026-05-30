@@ -1,5 +1,5 @@
 // Typed IPC channel definitions
-import type { AngleMappingConfig, AppConfig, CaptureResult, DeviceInfo, Mapping, RepeatSettings } from './models'
+import type { AngleMappingConfig, AppConfig, CaptureResult, DeviceInfo, Mapping, MappingProfile, RepeatSettings } from './models'
 
 // Invoke channels (renderer → main, returns Promise)
 export interface IpcInvokeMap {
@@ -18,14 +18,18 @@ export interface IpcInvokeMap {
   }
   'mapper:stop': { args: []; result: void }
   'mapper:is-active': { args: []; result: boolean }
-  'mappings:load': { args: [deviceId: number]; result: Mapping[] }
-  'mappings:save': { args: [deviceId: number, mappings: Mapping[]]; result: void }
-  'angle-mappings:load': { args: [deviceId: number]; result: AngleMappingConfig[] }
-  'angle-mappings:save': { args: [deviceId: number, configs: AngleMappingConfig[]]; result: void }
   'settings:load': { args: []; result: RepeatSettings }
   'settings:save': { args: [settings: RepeatSettings]; result: void }
   'config:load': { args: []; result: AppConfig }
   'config:save': { args: [config: AppConfig]; result: void }
+  // Profile management
+  'profiles:load-all':  { args: []; result: { profiles: MappingProfile[]; activeProfileId: string } }
+  'profiles:set-active':{ args: [id: string]; result: void }
+  'profiles:create':    { args: [name: string]; result: { profiles: MappingProfile[]; activeProfileId: string } }
+  'profiles:update':    { args: [profile: MappingProfile]; result: void }
+  'profiles:delete':    { args: [id: string]; result: { profiles: MappingProfile[]; activeProfileId: string } }
+  'profiles:export':    { args: [id: string]; result: boolean }
+  'profiles:import':    { args: []; result: MappingProfile | null }
 }
 
 // Event channels (main → renderer, via on/removeListener)

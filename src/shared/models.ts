@@ -84,6 +84,14 @@ export interface ControllerProfile {
   inputs: ControllerInputDef[]
 }
 
+export interface MappingProfile {
+  id: string
+  name: string
+  mappings: Mapping[]
+  angleMappings: AngleMappingConfig[]
+  createdAt: string // ISO timestamp
+}
+
 // Controller capture result
 export type CaptureResult =
   | { type: 'button'; button_id: number; button_name: string }
