@@ -412,8 +412,14 @@ export default function VisualMappingView({
               const bx     = btnX(input)
               const by     = input.y
               const { color, opacity, sw, glow } = svgStyle(input, mapped)
+              
+              // Spaced badge X positions to prevent overlap: Select at 34%, Home at 50%, Start at 66%
+              let badgeX = 50
+              if (input.name === 'Select') badgeX = 34
+              if (input.name === 'Start')  badgeX = 66
+              
               const labelY = 8.5
-              const pts = `${bx},${labelY} ${bx},${by}`
+              const pts = `${badgeX},${labelY} ${bx},${by}`
               return (
                 <g key={key} opacity={opacity}>
                   {/* Glow Underlay Line */}
@@ -601,14 +607,20 @@ export default function VisualMappingView({
             const key    = inputKey(input)
             const active = isInputActive(input, activeInputs)
             const hovered = hoveredKey === key
-            const bx     = btnX(input)
+            
+            // Spaced badge X positions to prevent overlap: Select at 34%, Home at 50%, Start at 66%
+            let badgeX = 50
+            if (input.name === 'Select') badgeX = 34
+            if (input.name === 'Start')  badgeX = 66
+            
             const labelY = 8.5
+            const isLeftPattern = input.name === 'Select' || input.name === 'Home'
             return (
               <div
                 key={key}
                 className="absolute transition-all duration-150"
                 style={{
-                  left: `${bx}%`,
+                  left: `${badgeX}%`,
                   top: `${labelY}%`,
                   transform: 'translate(-50%, -50%)',
                   zIndex: hovered ? 10 : 2,
@@ -621,48 +633,89 @@ export default function VisualMappingView({
                   onMouseEnter={() => setHoveredKey(key)}
                   onMouseLeave={() => setHoveredKey(null)}
                   className={[
-                    'flex flex-col items-center gap-1 text-[10px] font-mono whitespace-nowrap',
-                    'rounded-md border px-2 py-1 shadow-md transition-all duration-150 disabled:opacity-40 backdrop-blur-md',
+                    'flex items-center gap-2 text-[11px] font-mono whitespace-nowrap',
+                    'rounded-md border px-1.5 py-[2.5px] shadow-md transition-all duration-150 disabled:opacity-40 backdrop-blur-md',
                     labelClass(input, mapped),
                     hovered ? 'scale-105 shadow-lg' : 'scale-100',
                   ].join(' ')}
-                  style={{ minWidth: '54px' }}
                 >
-                  {/* Controller Button Label */}
-                  <span
-                    className={[
-                      'font-sans text-[10px] font-semibold tracking-wider transition-colors',
-                      active ? 'text-yellow-300' : hovered ? 'text-slate-100' : mapped ? 'text-slate-300' : 'text-slate-400',
-                    ].join(' ')}
-                  >
-                    {input.name}
-                  </span>
+                  {isLeftPattern ? (
+                    <>
+                      {/* Mapped Key / Keycap */}
+                      <span
+                        className={[
+                          'px-1.5 py-0.5 rounded text-[9px] font-sans font-bold shadow-sm transition-all',
+                          mapped
+                            ? hovered
+                              ? 'bg-red-500/20 border border-red-500/40 text-red-300'
+                              : active
+                                ? 'bg-yellow-500/20 border border-yellow-500/40 text-yellow-300'
+                                : 'bg-blue-500/25 border border-blue-500/35 text-blue-300'
+                            : 'bg-slate-800/60 border border-slate-700/50 text-slate-500',
+                        ].join(' ')}
+                      >
+                        {mapped ? mapped.key_combo.toUpperCase() : 'LIVRE'}
+                      </span>
 
-                  {/* Separator (pointing down) */}
-                  <span
-                    className={[
-                      'text-[8px] transition-colors leading-none',
-                      hovered && mapped ? 'text-red-400 font-bold' : active ? 'text-yellow-400' : 'text-slate-600',
-                    ].join(' ')}
-                  >
-                    {hovered && mapped ? '✕' : '▾'}
-                  </span>
+                      {/* Separator */}
+                      <span
+                        className={[
+                          'text-[9px] transition-colors',
+                          hovered && mapped ? 'text-red-400 font-bold' : active ? 'text-yellow-400' : 'text-slate-600',
+                        ].join(' ')}
+                      >
+                        {hovered && mapped ? '✕' : '◂'}
+                      </span>
 
-                  {/* Mapped Key / Keycap */}
-                  <span
-                    className={[
-                      'px-1.5 py-0.5 rounded text-[8px] font-sans font-bold shadow-sm transition-all',
-                      mapped
-                        ? hovered
-                          ? 'bg-red-500/20 border border-red-500/40 text-red-300'
-                          : active
-                            ? 'bg-yellow-500/20 border border-yellow-500/40 text-yellow-300'
-                            : 'bg-blue-500/25 border border-blue-500/35 text-blue-300'
-                        : 'bg-slate-800/60 border border-slate-700/50 text-slate-500',
-                    ].join(' ')}
-                  >
-                    {mapped ? mapped.key_combo.toUpperCase() : 'LIVRE'}
-                  </span>
+                      {/* Controller Button Label */}
+                      <span
+                        className={[
+                          'font-sans text-[11px] font-medium tracking-wide pr-1 transition-colors',
+                          active ? 'text-yellow-300' : hovered ? 'text-slate-100' : mapped ? 'text-slate-300' : 'text-slate-400',
+                        ].join(' ')}
+                      >
+                        {input.name}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      {/* Controller Button Label */}
+                      <span
+                        className={[
+                          'font-sans text-[11px] font-medium tracking-wide pl-1 transition-colors',
+                          active ? 'text-yellow-300' : hovered ? 'text-slate-100' : mapped ? 'text-slate-300' : 'text-slate-400',
+                        ].join(' ')}
+                      >
+                        {input.name}
+                      </span>
+
+                      {/* Separator */}
+                      <span
+                        className={[
+                          'text-[9px] transition-colors',
+                          hovered && mapped ? 'text-red-400 font-bold' : active ? 'text-yellow-400' : 'text-slate-600',
+                        ].join(' ')}
+                      >
+                        {hovered && mapped ? '✕' : '▸'}
+                      </span>
+
+                      {/* Mapped Key / Keycap */}
+                      <span
+                        className={[
+                          'px-1.5 py-0.5 rounded text-[9px] font-sans font-bold shadow-sm transition-all',
+                          mapped
+                            ? hovered
+                              ? 'bg-red-500/20 border border-red-500/40 text-red-300'
+                              : active
+                                ? 'bg-yellow-500/20 border border-yellow-500/40 text-yellow-300'
+                                : 'bg-blue-500/25 border border-blue-500/35 text-blue-300'
+                            : 'bg-slate-800/60 border border-slate-700/50 text-slate-500',
+                        ].join(' ')}
+                      >
+                        {mapped ? mapped.key_combo.toUpperCase() : 'LIVRE'}
+                      </span>
+                    </>
+                  )}
                 </button>
               </div>
             )
