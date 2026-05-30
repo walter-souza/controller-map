@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import React, { memo, useState } from 'react'
 import type { AngleMappingConfig, ControllerAxisDef, ControllerInputDef, ControllerProfile, CaptureResult, Mapping, StickDef } from '../../../shared/models'
 
 // ── Layout constants (% of container) ─────────────────────────────────────────
@@ -311,6 +311,82 @@ export default function VisualMappingView({
     return 'border-white/5 bg-slate-950/45 text-slate-400 opacity-60 hover:opacity-100'
   }
 
+  function renderInteractiveButton(
+    input: ControllerInputDef,
+    color: string,
+    opacity: number,
+    sw: string,
+    glow: boolean,
+    active: boolean,
+    hovered: boolean,
+    onClick: () => void,
+    onMouseEnter: () => void,
+    onMouseLeave: () => void
+  ) {
+    const bx = btnX(input)
+    const by = input.y
+
+    // Resolve size and coordinates in the 100x100 SVG viewbox
+    let shape: React.ReactElement | null = null
+    const name = input.name
+
+    if (name === 'L1' || name === 'R1') {
+      const w = 17.5, h = 4.25, rx = 2.125
+      shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={rx} />
+    } else if (name === 'L2' || name === 'R2') {
+      const w = 18.0, h = 7.0, rx = 3.5
+      shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={rx} />
+    } else if (name === 'A' || name === 'B' || name === 'X' || name === 'Y') {
+      const rx = 3.0, ry = 4.6
+      shape = <ellipse cx={bx} cy={by} rx={rx} ry={ry} />
+    } else if (name === 'L3' || name === 'R3') {
+      const rx = 4.0, ry = 6.1
+      shape = <ellipse cx={bx} cy={by} rx={rx} ry={ry} />
+    } else if (name === 'Select' || name === 'Start') {
+      const w = 5.5, h = 2.7, rx = 1.35
+      shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={rx} />
+    } else if (name === 'Home') {
+      const rx = 2.5, ry = 3.85
+      shape = <ellipse cx={bx} cy={by} rx={rx} ry={ry} />
+    } else {
+      // D-Pad buttons
+      const w = 3.5, h = 5.3, rx = 1.0
+      shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={rx} />
+    }
+
+    const fill = active
+      ? 'rgba(250, 204, 21, 0.22)'
+      : hovered
+        ? 'rgba(59, 130, 246, 0.15)'
+        : 'rgba(255, 255, 255, 0.02)'
+
+    return (
+      <g
+        onClick={onClick}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        style={{ cursor: isPlaying ? 'default' : 'pointer' }}
+        pointerEvents="visiblePainted"
+      >
+        {/* Glow Underlay Border */}
+        {React.cloneElement(shape, {
+          fill: fill,
+          stroke: color,
+          strokeWidth: (glow || active || hovered) ? 0.35 : 0.15,
+          filter: (glow || active || hovered) ? 'url(#line-glow)' : 'none',
+          opacity: (glow || active || hovered) ? 0.85 : 0.25,
+        })}
+        {/* Sharp Core Border */}
+        {React.cloneElement(shape, {
+          fill: 'none',
+          stroke: color,
+          strokeWidth: 0.12,
+          opacity: (glow || active || hovered) ? 1.0 : 0.45,
+        })}
+      </g>
+    )
+  }
+
   return (
     <div className="flex-1 flex flex-row overflow-hidden select-none">
 
@@ -370,26 +446,23 @@ export default function VisualMappingView({
                   {/* Sharp Core Line */}
                   <polyline points={pts} stroke={color} strokeWidth={sw} fill="none" strokeLinejoin="round" pointerEvents="none" />
                   
-                  {/* Precision Target Anchor Dot */}
-                  {/* Outer glowing target ring */}
-                  <circle
-                    cx={bx}
-                    cy={by}
-                    r={1.2}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth="0.15"
-                    opacity={glow ? 0.8 : mapped ? 0.45 : 0.2}
-                    pointerEvents="none"
-                  />
-                  {/* Inner solid anchor dot */}
-                  <circle
-                    cx={bx}
-                    cy={by}
-                    r={0.45}
-                    fill={color}
-                    pointerEvents="none"
-                  />
+                  {/* Precision Interactive Controller Button Shape */}
+                  {renderInteractiveButton(
+                    input,
+                    color,
+                    opacity,
+                    sw,
+                    glow || false,
+                    isInputActive(input, activeInputs),
+                    hovered,
+                    () => {
+                      if (isPlaying) return
+                      if (mapped) onDeleteMapping(mapped)
+                      else onAddMapping(toCaptureResult(input))
+                    },
+                    () => setHoveredKey(key),
+                    () => setHoveredKey(null)
+                  )}
 
                   {/* Wide transparent interactive line for easier hovering */}
                   <polyline
@@ -437,24 +510,23 @@ export default function VisualMappingView({
                   {/* Sharp Core Line */}
                   <polyline points={pts} stroke={color} strokeWidth={sw} fill="none" pointerEvents="none" />
                   
-                  {/* Precision Target Anchor Dot */}
-                  <circle
-                    cx={bx}
-                    cy={by}
-                    r={1.2}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth="0.15"
-                    opacity={glow ? 0.8 : mapped ? 0.45 : 0.2}
-                    pointerEvents="none"
-                  />
-                  <circle
-                    cx={bx}
-                    cy={by}
-                    r={0.45}
-                    fill={color}
-                    pointerEvents="none"
-                  />
+                  {/* Precision Interactive Controller Button Shape */}
+                  {renderInteractiveButton(
+                    input,
+                    color,
+                    opacity,
+                    sw,
+                    glow || false,
+                    isInputActive(input, activeInputs),
+                    hovered,
+                    () => {
+                      if (isPlaying) return
+                      if (mapped) onDeleteMapping(mapped)
+                      else onAddMapping(toCaptureResult(input))
+                    },
+                    () => setHoveredKey(key),
+                    () => setHoveredKey(null)
+                  )}
 
                   {/* Wide transparent interactive line */}
                   <polyline
