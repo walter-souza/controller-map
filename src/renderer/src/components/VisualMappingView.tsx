@@ -457,8 +457,9 @@ export default function VisualMappingView({
     const by = input.y
 
     // Resolve size and coordinates in the 100x100 SVG viewbox
-    let shape: ReactElement | null = null
     const name = input.name
+    let shape: ReactElement | null = null
+    const isPlayStation = profile.id === 'playstation'
 
     if (name === 'L1' || name === 'R1') {
       const w = 10.6, h = 6.5, rx = 1, ry = 3
@@ -466,20 +467,39 @@ export default function VisualMappingView({
     } else if (name === 'L2' || name === 'R2') {
       const w = 10.6, h = 10.5, rx = 2, ry = 5
       shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={ry} />
-    } else if (name === 'A' || name === 'B' || name === 'X' || name === 'Y') {
+    } else if (name === 'A' || name === 'B' || name === 'X' || name === 'Y' || name === 'Square' || name === 'Circle' || name === 'Triangle' || name === 'Cross') {
       const rx = 1.75, ry = 4.5
       shape = <ellipse cx={bx} cy={by} rx={rx} ry={ry} />
     } else if (name === 'L3' || name === 'R3') {
       const rx = 2.25, ry = 6
       shape = <ellipse cx={bx} cy={by} rx={rx} ry={ry} />
-    } else if (name === 'Select' || name === 'Start') {
-      const w = 3, h = 3.5, rx = 1.0, ry = 1.75
+    } else if (name === 'Select' || name === 'Start' || name === 'Share' || name === 'Options') {
+      const w = isPlayStation ? 1.5 : 3
+      const h = isPlayStation ? 6.15 : 3.5
+      const rx = isPlayStation ? 0.5 : 1.0
+      const ry = isPlayStation ? 1.5 : 1.75
       shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={ry} />
-    } else if (name === 'Home') {
+    } else if (name === 'Home' || name === 'PS') {
       const rx = 1.5, ry = 3.85
       shape = <ellipse cx={bx} cy={by} rx={rx} ry={ry} />
+    } else if (name === 'Touchpad' || name === 'PadPress') {
+      const w = isPlayStation ? 19.5 : 12.0
+      const h = isPlayStation ? 17.7 : 4.5
+      const rx = 1.0
+      const ry = 1.0
+      shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={ry} />
+    } else if (name === 'D-Up' || name === 'D-Down') {
+      const w = isPlayStation ? 1.5 : 2.5
+      const h = isPlayStation ? 6.0 : 6.0
+      const rx = 1.0
+      shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={rx} />
+    } else if (name === 'D-Left' || name === 'D-Right') {
+      const w = isPlayStation ? 2.25 : 2.5
+      const h = isPlayStation ? 3.5 : 6.0
+      const rx = 1.0
+      shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={rx} />
     } else {
-      // D-Pad buttons
+      // Fallback D-Pad buttons
       const w = 2.5, h = 6, rx = 1.0
       shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={rx} />
     }

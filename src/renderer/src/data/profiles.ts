@@ -1,7 +1,8 @@
 import type { ControllerProfile } from '../../../shared/models'
 import { eightbitdoUltimate } from './controllers/eightbitdo-ultimate'
+import { playstationController } from './controllers/playstation'
 
-export const KNOWN_PROFILES: ControllerProfile[] = [eightbitdoUltimate]
+export const KNOWN_PROFILES: ControllerProfile[] = [eightbitdoUltimate, playstationController]
 
 export function detectProfile(deviceName: string): ControllerProfile {
   const lower = deviceName.toLowerCase()
