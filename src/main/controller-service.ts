@@ -326,13 +326,13 @@ export class ControllerService {
         right: false,
       }
 
-      // Ensure buttons array has at least 15 slots so buttons 11-14 are included in length
+      // Ensure buttons array has at least 20 slots so buttons 15-18 are included in length
       // and won't throw out of bounds.
       if (!instance.buttons) {
         // @ts-ignore
         instance.buttons = []
       }
-      while (instance.buttons.length < 15) {
+      while (instance.buttons.length < 20) {
         instance.buttons.push(false)
       }
 
@@ -340,7 +340,7 @@ export class ControllerService {
       // @ts-ignore
       if (instance._buttons) {
         // @ts-ignore
-        while (instance._buttons.length < 15) {
+        while (instance._buttons.length < 20) {
           // @ts-ignore
           instance._buttons.push(false)
         }

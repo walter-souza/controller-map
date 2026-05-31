@@ -259,8 +259,8 @@ export class Mapper {
   private _processButtons(suppressed: Set<number>, chordReleased: Set<number>): void {
     if (!this._joystick) return
     const buttons = this._joystick.buttons
-
-    for (let btn = 0; btn < buttons.length; btn++) {
+    const numButtons = Math.max(buttons.length, 24)
+    for (let btn = 0; btn < numButtons; btn++) {
       const pressed = buttons[btn] ?? false
 
       if (suppressed.has(btn)) {
