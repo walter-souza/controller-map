@@ -1,6 +1,6 @@
 {
   "name": "controller-map",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Map gamepad buttons to keyboard shortcuts",
   "main": "out/main/index.js",
   "author": "walter-souza",
@@ -26,6 +26,28 @@
       "oneClick": true,
       "perMachine": false,
       "deleteAppDataOnUninstall": false
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "artifactName": "controller-map-mac-${version}.${ext}"
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 150,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 150,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     },
     "publish": {
       "provider": "github",

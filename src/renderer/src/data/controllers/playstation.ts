@@ -6,6 +6,7 @@ import controllerImage from '../../assets/controllers/playstation.svg'
 // Square=2, X=0, Circle=1, Triangle=3
 // L1=9, R1=10, L2/R2 triggers as axes (axis 4 & 5)
 // Share=4, Options=6, L3=7, R3=8, PS=5
+// Touchpad Click (PadPress) = 15 (Fitted to hardware button 15!)
 // D-pad: Up=11, Down=12, Left=13, Right=14 (Simulated by hatMotion in controller-service.ts)
 export const playstationController: ControllerProfile = {
   id: 'playstation',
@@ -35,6 +36,9 @@ export const playstationController: ControllerProfile = {
     { type: 'button', id: 12,                    name: 'D-Down', x: 26.25, y: 50.5 },
     { type: 'button', id: 13,                    name: 'D-Left', x: 21.75, y: 44.2 },
     { type: 'button', id: 14,                    name: 'D-Right',x: 30.75, y: 44.2 },
+
+    // ── Touchpad Click (Trigger) ──────────────────────────────────────────
+    { type: 'button', id: 15,                    name: 'PadPress',x: 50.0,  y: 28.1 },
 
     // ── Center buttons ────────────────────────────────────────────────────
     { type: 'button', id: 4,                     name: 'Share',  x: 31.25, y: 26.2 },
