@@ -31,10 +31,10 @@ export const playstationController: ControllerProfile = {
     { type: 'axis',   axis_id: 1, direction:  1, name: 'LS↓',   x: 37.5,  y: 72.6 },
 
     // ── D-pad ─────────────────────────────────────────────────────────────
-    { type: 'button', id: 11,                    name: 'D-Up',   x: 26.25, y: 35.8 },
-    { type: 'button', id: 12,                    name: 'D-Down', x: 26.25, y: 52.7 },
-    { type: 'button', id: 13,                    name: 'D-Left', x: 20.75, y: 44.2 },
-    { type: 'button', id: 14,                    name: 'D-Right',x: 31.75, y: 44.2 },
+    { type: 'button', id: 11,                    name: 'D-Up',   x: 26.25, y: 37.8 },
+    { type: 'button', id: 12,                    name: 'D-Down', x: 26.25, y: 50.5 },
+    { type: 'button', id: 13,                    name: 'D-Left', x: 21.75, y: 44.2 },
+    { type: 'button', id: 14,                    name: 'D-Right',x: 30.75, y: 44.2 },
 
     // ── Center buttons ────────────────────────────────────────────────────
     { type: 'button', id: 4,                     name: 'Share',  x: 31.25, y: 26.2 },

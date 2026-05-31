@@ -489,13 +489,13 @@ export default function VisualMappingView({
       const ry = 1.0
       shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={ry} />
     } else if (name === 'D-Up' || name === 'D-Down') {
-      const w = isPlayStation ? 3.6 : 2.5
-      const h = isPlayStation ? 6.5 : 6.0
+      const w = isPlayStation ? 1.5 : 2.5
+      const h = isPlayStation ? 6.0 : 6.0
       const rx = 1.0
       shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={rx} />
     } else if (name === 'D-Left' || name === 'D-Right') {
-      const w = isPlayStation ? 4.8 : 2.5
-      const h = isPlayStation ? 5.0 : 6.0
+      const w = isPlayStation ? 2.25 : 2.5
+      const h = isPlayStation ? 3.5 : 6.0
       const rx = 1.0
       shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={rx} />
     } else {
