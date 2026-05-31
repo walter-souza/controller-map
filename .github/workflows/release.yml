@@ -7,8 +7,11 @@ on:
 
 jobs:
   release:
-    name: Build & Release (Windows)
-    runs-on: windows-latest
+    name: Build & Release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
     permissions:
       contents: write   # needed to create the GitHub Release
 
@@ -30,25 +33,35 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run package
 
-      - name: Upload installer as artifact
+      - name: Upload installer as artifact (Windows)
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: installer
+          name: windows-installer
           path: dist/controller-map-setup-*.exe
+          if-no-files-found: error
+
+      - name: Upload installer as artifact (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: dist/controller-map-mac-*.dmg
           if-no-files-found: error
 
       - name: Read version from package.json
         id: pkg
-        shell: pwsh
+        shell: bash
         run: |
-          $version = (Get-Content package.json | ConvertFrom-Json).version
-          echo "version=$version" >> $env:GITHUB_OUTPUT
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Zip portable build
+      - name: Zip portable build (Windows)
+        if: matrix.os == 'windows-latest'
         shell: pwsh
-        run: Compress-Archive -Path dist/win-unpacked -DestinationPath dist/controller-map-portable-${{ steps.pkg.outputs.version }}.zip
+        run: Compress-Archive -Path dist/win-unpacked -DestinationPath dist/controller-map-portable-win-${{ steps.pkg.outputs.version }}.zip
 
-      - name: Create GitHub Release
+      - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.pkg.outputs.version }}
@@ -56,8 +69,11 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          fail_on_unmatched_files: false
           files: |
             dist/controller-map-setup-*.exe
-            dist/controller-map-portable-*.zip
+            dist/controller-map-portable-win-*.zip
+            dist/controller-map-mac-*.dmg
+            dist/controller-map-mac-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
