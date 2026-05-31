@@ -457,8 +457,9 @@ export default function VisualMappingView({
     const by = input.y
 
     // Resolve size and coordinates in the 100x100 SVG viewbox
-    let shape: ReactElement | null = null
     const name = input.name
+    let shape: ReactElement | null = null
+    const isPlayStation = profile.id === 'playstation'
 
     if (name === 'L1' || name === 'R1') {
       const w = 10.6, h = 6.5, rx = 1, ry = 3
@@ -473,13 +474,19 @@ export default function VisualMappingView({
       const rx = 2.25, ry = 6
       shape = <ellipse cx={bx} cy={by} rx={rx} ry={ry} />
     } else if (name === 'Select' || name === 'Start' || name === 'Share' || name === 'Options') {
-      const w = 3, h = 3.5, rx = 1.0, ry = 1.75
+      const w = isPlayStation ? 1.5 : 3
+      const h = isPlayStation ? 6.15 : 3.5
+      const rx = isPlayStation ? 0.5 : 1.0
+      const ry = isPlayStation ? 1.5 : 1.75
       shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={ry} />
     } else if (name === 'Home' || name === 'PS') {
       const rx = 1.5, ry = 3.85
       shape = <ellipse cx={bx} cy={by} rx={rx} ry={ry} />
     } else if (name === 'Touchpad' || name === 'PadPress') {
-      const w = 12.0, h = 4.5, rx = 1.0, ry = 1.0
+      const w = isPlayStation ? 19.5 : 12.0
+      const h = isPlayStation ? 17.7 : 4.5
+      const rx = 1.0
+      const ry = 1.0
       shape = <rect x={bx - w/2} y={by - h/2} width={w} height={h} rx={rx} ry={ry} />
     } else {
       // D-Pad buttons
