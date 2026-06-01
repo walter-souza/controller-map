@@ -14,6 +14,14 @@ const { uIOhook, UiohookKey } = require('uiohook-napi') as typeof import('uiohoo
 // Eliminate nut-js built-in delay between key press and release (default is 500ms!)
 keyboard.config.autoDelayMs = 0
 
+// Safe dynamic import for the Interception driver wrapper
+let InterceptionClass: any = null
+try {
+  InterceptionClass = require('node-interception').Interception
+} catch (e) {
+  console.warn('node-interception could not be loaded (driver might not be installed):', e)
+}
+
 export type KeyCaptureCallback = (combo: string) => void
 
 // Map uiohook keycode to readable name
@@ -29,15 +37,198 @@ export class KeyboardService {
   private _heldModifiers = new Set<string>()
   private _captureListener: ((e: { keycode: number }) => void) | null = null
 
+  // Interception driver support
+  private _useInterception = false
+  private _interception: any = null
+  private _interceptionDevice: any = null
+
+  setUseInterception(value: boolean): void {
+    this._useInterception = value
+    if (value) {
+      this._initInterception()
+    } else {
+      this._destroyInterception()
+    }
+  }
+
+  private _initInterception(): void {
+    if (this._interception) return
+    if (!InterceptionClass) {
+      console.warn("Interception driver is not installed or node-interception failed to load.")
+      return
+    }
+    try {
+      this._interception = new InterceptionClass()
+      const keyboards = this._interception.getKeyboards()
+      if (keyboards.length > 0) {
+        // Use the first keyboard device as the standard simulation channel
+        this._interceptionDevice = keyboards[0]
+        console.log("Interception initialized successfully. Device:", this._interceptionDevice.toString())
+      } else {
+        console.warn("Interception context created, but no keyboard devices were detected.")
+        this._destroyInterception()
+      }
+    } catch (e) {
+      console.error("Failed to initialize Interception context:", e)
+      this._interception = null
+      this._interceptionDevice = null
+    }
+  }
+
+  private _destroyInterception(): void {
+    if (this._interception) {
+      try {
+        this._interception.destroy()
+      } catch (e) {
+        // ignore
+      }
+      this._interception = null
+      this._interceptionDevice = null
+    }
+  }
+
+  private _resolveScanCode(name: string): { code: number; isExtended: boolean } | null {
+    const scanCodes: Record<string, { code: number; isExtended: boolean }> = {
+      // Modifiers
+      ctrl: { code: 0x1D, isExtended: false },
+      control: { code: 0x1D, isExtended: false },
+      alt: { code: 0x38, isExtended: false },
+      shift: { code: 0x2A, isExtended: false },
+      meta: { code: 0x5B, isExtended: true },
+      win: { code: 0x5B, isExtended: true },
+
+      // Special keys
+      enter: { code: 0x1C, isExtended: false },
+      return: { code: 0x1C, isExtended: false },
+      space: { code: 0x39, isExtended: false },
+      backspace: { code: 0x0E, isExtended: false },
+      tab: { code: 0x0F, isExtended: false },
+      escape: { code: 0x01, isExtended: false },
+      esc: { code: 0x01, isExtended: false },
+      delete: { code: 0x53, isExtended: true },
+      del: { code: 0x53, isExtended: true },
+      insert: { code: 0x52, isExtended: true },
+      home: { code: 0x47, isExtended: true },
+      end: { code: 0x4F, isExtended: true },
+      pageup: { code: 0x49, isExtended: true },
+      pagedown: { code: 0x51, isExtended: true },
+      
+      // Arrows
+      left: { code: 0x4B, isExtended: true },
+      right: { code: 0x4D, isExtended: true },
+      up: { code: 0x48, isExtended: true },
+      down: { code: 0x50, isExtended: true },
+
+      // Functions
+      f1: { code: 0x3B, isExtended: false },
+      f2: { code: 0x3C, isExtended: false },
+      f3: { code: 0x3D, isExtended: false },
+      f4: { code: 0x3E, isExtended: false },
+      f5: { code: 0x3F, isExtended: false },
+      f6: { code: 0x40, isExtended: false },
+      f7: { code: 0x41, isExtended: false },
+      f8: { code: 0x42, isExtended: false },
+      f9: { code: 0x43, isExtended: false },
+      f10: { code: 0x44, isExtended: false },
+      f11: { code: 0x57, isExtended: false },
+      f12: { code: 0x58, isExtended: false },
+
+      // Main row digits
+      numrow0: { code: 0x0B, isExtended: false },
+      numrow1: { code: 0x02, isExtended: false },
+      numrow2: { code: 0x03, isExtended: false },
+      numrow3: { code: 0x04, isExtended: false },
+      numrow4: { code: 0x05, isExtended: false },
+      numrow5: { code: 0x06, isExtended: false },
+      numrow6: { code: 0x07, isExtended: false },
+      numrow7: { code: 0x08, isExtended: false },
+      numrow8: { code: 0x09, isExtended: false },
+      numrow9: { code: 0x0A, isExtended: false },
+      '0': { code: 0x0B, isExtended: false },
+      '1': { code: 0x02, isExtended: false },
+      '2': { code: 0x03, isExtended: false },
+      '3': { code: 0x04, isExtended: false },
+      '4': { code: 0x05, isExtended: false },
+      '5': { code: 0x06, isExtended: false },
+      '6': { code: 0x07, isExtended: false },
+      '7': { code: 0x08, isExtended: false },
+      '8': { code: 0x09, isExtended: false },
+      '9': { code: 0x0A, isExtended: false },
+
+      // Numpad digits
+      numpad0: { code: 0x52, isExtended: false },
+      numpad1: { code: 0x4F, isExtended: false },
+      numpad2: { code: 0x50, isExtended: false },
+      numpad3: { code: 0x51, isExtended: false },
+      numpad4: { code: 0x4B, isExtended: false },
+      numpad5: { code: 0x4C, isExtended: false },
+      numpad6: { code: 0x4D, isExtended: false },
+      numpad7: { code: 0x47, isExtended: false },
+      numpad8: { code: 0x48, isExtended: false },
+      numpad9: { code: 0x49, isExtended: false },
+    }
+
+    if (scanCodes[name] !== undefined) return scanCodes[name]
+
+    if (name.length === 1 && name >= 'a' && name <= 'z') {
+      const letterScanCodes: Record<string, number> = {
+        a: 0x1E, b: 0x30, c: 0x2E, d: 0x20, e: 0x12, f: 0x21, g: 0x22, h: 0x23,
+        i: 0x17, j: 0x24, k: 0x25, l: 0x26, m: 0x32, n: 0x31, o: 0x18, p: 0x19,
+        q: 0x10, r: 0x13, s: 0x1F, t: 0x14, u: 0x16, v: 0x2F, w: 0x11, x: 0x2D,
+        y: 0x15, z: 0x2C
+      }
+      const code = letterScanCodes[name]
+      if (code !== undefined) {
+        return { code, isExtended: false }
+      }
+    }
+
+    return null
+  }
+
   /**
    * Press a key combo string like "ctrl+shift+a" or "F5".
-   * Fires key down then key up via nut-js.
+   * Fires key down then key up via nut-js or node-interception.
    */
   async pressCombo(combo: string): Promise<void> {
     const parts = combo
       .toLowerCase()
       .split('+')
       .map((p) => p.trim())
+
+    if (this._useInterception && this._interceptionDevice) {
+      const resolvedKeys = parts.map(part => this._resolveScanCode(part)).filter(k => k !== null) as { code: number; isExtended: boolean }[]
+      if (resolvedKeys.length === 0) return
+
+      try {
+        // Press all keys down in order
+        for (const r of resolvedKeys) {
+          const state = r.isExtended ? 2 : 0 // 2 is KeyState.E0 (Extended Down), 0 is KeyState.DOWN
+          this._interceptionDevice.send({
+            type: 'keyboard',
+            code: r.code,
+            state: state,
+            information: 0
+          })
+        }
+
+        // Release all keys in reverse order
+        for (let i = resolvedKeys.length - 1; i >= 0; i--) {
+          const r = resolvedKeys[i]
+          const state = r.isExtended ? 3 : 1 // 3 is KeyState.E0 | KeyState.UP (Extended Up), 1 is KeyState.UP
+          this._interceptionDevice.send({
+            type: 'keyboard',
+            code: r.code,
+            state: state,
+            information: 0
+          })
+        }
+      } catch (e) {
+        console.error("Interception failed to send keys:", e)
+      }
+      return
+    }
+
     const keys: import('@nut-tree-fork/nut-js').Key[] = []
 
     for (const part of parts) {

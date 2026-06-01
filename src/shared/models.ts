@@ -23,6 +23,7 @@ export interface Mapping {
 export interface RepeatSettings {
   initial_delay_ms: number   // default 400
   repeat_interval_ms: number // default 50
+  use_interception?: boolean // default false
 }
 
 export interface AppConfig {
