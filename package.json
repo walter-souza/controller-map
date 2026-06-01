@@ -58,6 +58,7 @@
     "@kmamal/sdl": "^0.11.13",
     "@nut-tree-fork/nut-js": "^4.2.1",
     "electron-store": "^8.2.0",
+    "node-interception": "^2.0.4",
     "uiohook-napi": "^1.5.4"
   },
   "devDependencies": {
