@@ -28,6 +28,7 @@ interface Props {
   onAddMapping: (presetInput: CaptureResult) => void
   onDeleteMapping: (mapping: Mapping) => void
   onEditAngleMapping: (stick: StickDef) => void
+  onEditMapping?: (mapping: Mapping) => void
 }
 
 function findMapping(input: ControllerInputDef, mappings: Mapping[]): Mapping | undefined {
@@ -398,7 +399,7 @@ const JoystickPad = memo(function JoystickPad({ stick, axisX, axisY, sectors, de
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function VisualMappingView({
-  profile, mappings, angleMappings, isPlaying, activeInputs = new Set(), axisValues = {}, onAddMapping, onDeleteMapping, onEditAngleMapping,
+  profile, mappings, angleMappings, isPlaying, activeInputs = new Set(), axisValues = {}, onAddMapping, onDeleteMapping, onEditAngleMapping, onEditMapping,
 }: Props) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null)
 
@@ -436,7 +437,7 @@ export default function VisualMappingView({
     const active  = isInputActive(input, activeInputs)
     const hovered = hoveredKey === key
     if (active)  return 'border-yellow-500 bg-slate-950 text-yellow-400 font-semibold ring-1 ring-yellow-400/20 shadow-md'
-    if (hovered) return mapped ? 'border-red-500 bg-slate-950 text-red-400 font-semibold ring-1 ring-red-400/20 shadow-md' : 'border-slate-300 bg-white text-slate-800 shadow-sm hover:bg-slate-50 hover:border-slate-400'
+    if (hovered) return mapped ? 'border-blue-500 bg-slate-950 text-blue-300 font-semibold ring-1 ring-blue-400/25 shadow-md' : 'border-slate-300 bg-white text-slate-800 shadow-sm hover:bg-slate-50 hover:border-slate-400'
     if (mapped)  return 'border-blue-500/40 bg-slate-950 text-blue-400 font-semibold shadow-sm'
     return 'border-slate-200 bg-white/95 text-slate-500 hover:text-slate-800 shadow-sm hover:border-slate-300 hover:bg-white'
   }
@@ -608,8 +609,12 @@ export default function VisualMappingView({
                     hovered,
                     () => {
                       if (isPlaying) return
-                      if (mapped) onDeleteMapping(mapped)
-                      else onAddMapping(toCaptureResult(input))
+                      if (mapped) {
+                        if (onEditMapping) onEditMapping(mapped)
+                        else onDeleteMapping(mapped)
+                      } else {
+                        onAddMapping(toCaptureResult(input))
+                      }
                     },
                     () => setHoveredKey(key),
                     () => setHoveredKey(null)
@@ -673,8 +678,12 @@ export default function VisualMappingView({
                     hovered,
                     () => {
                       if (isPlaying) return
-                      if (mapped) onDeleteMapping(mapped)
-                      else onAddMapping(toCaptureResult(input))
+                      if (mapped) {
+                        if (onEditMapping) onEditMapping(mapped)
+                        else onDeleteMapping(mapped)
+                      } else {
+                        onAddMapping(toCaptureResult(input))
+                      }
                     },
                     () => setHoveredKey(key),
                     () => setHoveredKey(null)
@@ -709,8 +718,16 @@ export default function VisualMappingView({
               >
                 <button
                   disabled={isPlaying}
-                  title={mapped ? `${input.name} → ${mapped.key_combo} (clique para remover)` : `Mapear ${input.name}`}
-                  onClick={() => { if (isPlaying) return; if (mapped) onDeleteMapping(mapped); else onAddMapping(toCaptureResult(input)) }}
+                  title={mapped ? `${input.name} → ${mapped.key_combo} (clique para editar)` : `Mapear ${input.name}`}
+                  onClick={() => {
+                    if (isPlaying) return
+                    if (mapped) {
+                      if (onEditMapping) onEditMapping(mapped)
+                      else onDeleteMapping(mapped)
+                    } else {
+                      onAddMapping(toCaptureResult(input))
+                    }
+                  }}
                   onMouseEnter={() => setHoveredKey(key)}
                   onMouseLeave={() => setHoveredKey(null)}
                   className={[
@@ -726,7 +743,7 @@ export default function VisualMappingView({
                       'px-1.5 py-0.5 rounded text-[9px] font-sans font-bold shadow-sm transition-all',
                       mapped
                         ? hovered
-                          ? 'bg-red-500 border border-red-600 text-white'
+                          ? 'bg-blue-600 border border-blue-700 text-white'
                           : active
                             ? 'bg-yellow-500 border border-yellow-600 text-slate-950 font-extrabold'
                             : 'bg-blue-500 border border-blue-600 text-white'
@@ -742,7 +759,7 @@ export default function VisualMappingView({
                   <span
                     className={[
                       'text-[9px] transition-colors',
-                      hovered && mapped ? 'text-red-400 font-bold' : active ? 'text-yellow-400' : mapped ? 'text-blue-400/70' : 'text-slate-300',
+                      hovered && mapped ? 'text-blue-400 font-bold' : active ? 'text-yellow-400' : mapped ? 'text-blue-400/70' : 'text-slate-300',
                     ].join(' ')}
                   >
                     {hovered && mapped ? '✕' : '◂'}
@@ -776,8 +793,16 @@ export default function VisualMappingView({
               >
                 <button
                   disabled={isPlaying}
-                  title={mapped ? `${input.name} → ${mapped.key_combo} (clique para remover)` : `Mapear ${input.name}`}
-                  onClick={() => { if (isPlaying) return; if (mapped) onDeleteMapping(mapped); else onAddMapping(toCaptureResult(input)) }}
+                  title={mapped ? `${input.name} → ${mapped.key_combo} (clique para editar)` : `Mapear ${input.name}`}
+                  onClick={() => {
+                    if (isPlaying) return
+                    if (mapped) {
+                      if (onEditMapping) onEditMapping(mapped)
+                      else onDeleteMapping(mapped)
+                    } else {
+                      onAddMapping(toCaptureResult(input))
+                    }
+                  }}
                   onMouseEnter={() => setHoveredKey(key)}
                   onMouseLeave={() => setHoveredKey(null)}
                   className={[
@@ -801,7 +826,7 @@ export default function VisualMappingView({
                   <span
                     className={[
                       'text-[9px] transition-colors',
-                      hovered && mapped ? 'text-red-400 font-bold' : active ? 'text-yellow-400' : mapped ? 'text-blue-400/70' : 'text-slate-300',
+                      hovered && mapped ? 'text-blue-400 font-bold' : active ? 'text-yellow-400' : mapped ? 'text-blue-400/70' : 'text-slate-300',
                     ].join(' ')}
                   >
                     {hovered && mapped ? '✕' : '▸'}
@@ -813,7 +838,7 @@ export default function VisualMappingView({
                       'px-1.5 py-0.5 rounded text-[9px] font-sans font-bold shadow-sm transition-all',
                       mapped
                         ? hovered
-                          ? 'bg-red-500 border border-red-600 text-white'
+                          ? 'bg-blue-600 border border-blue-700 text-white'
                           : active
                             ? 'bg-yellow-500 border border-yellow-600 text-slate-950 font-extrabold'
                             : 'bg-blue-500 border border-blue-600 text-white'
@@ -856,8 +881,16 @@ export default function VisualMappingView({
               >
                 <button
                   disabled={isPlaying}
-                  title={mapped ? `${input.name} → ${mapped.key_combo} (clique para remover)` : `Mapear ${input.name}`}
-                  onClick={() => { if (isPlaying) return; if (mapped) onDeleteMapping(mapped); else onAddMapping(toCaptureResult(input)) }}
+                  title={mapped ? `${input.name} → ${mapped.key_combo} (clique para editar)` : `Mapear ${input.name}`}
+                  onClick={() => {
+                    if (isPlaying) return
+                    if (mapped) {
+                      if (onEditMapping) onEditMapping(mapped)
+                      else onDeleteMapping(mapped)
+                    } else {
+                      onAddMapping(toCaptureResult(input))
+                    }
+                  }}
                   onMouseEnter={() => setHoveredKey(key)}
                   onMouseLeave={() => setHoveredKey(null)}
                   className={[
@@ -875,7 +908,7 @@ export default function VisualMappingView({
                           'px-1.5 py-0.5 rounded text-[9px] font-sans font-bold shadow-sm transition-all',
                           mapped
                             ? hovered
-                              ? 'bg-red-500 border border-red-600 text-white'
+                              ? 'bg-blue-600 border border-blue-700 text-white'
                               : active
                                 ? 'bg-yellow-500 border border-yellow-600 text-slate-950 font-extrabold'
                                 : 'bg-blue-500 border border-blue-600 text-white'
@@ -891,7 +924,7 @@ export default function VisualMappingView({
                       <span
                         className={[
                           'text-[9px] transition-colors',
-                          hovered && mapped ? 'text-red-400 font-bold' : active ? 'text-yellow-400' : mapped ? 'text-blue-400/70' : 'text-slate-300',
+                          hovered && mapped ? 'text-blue-400 font-bold' : active ? 'text-yellow-400' : mapped ? 'text-blue-400/70' : 'text-slate-300',
                         ].join(' ')}
                       >
                         {hovered && mapped ? '✕' : '◂'}
@@ -923,7 +956,7 @@ export default function VisualMappingView({
                       <span
                         className={[
                           'text-[9px] transition-colors',
-                          hovered && mapped ? 'text-red-400 font-bold' : active ? 'text-yellow-400' : mapped ? 'text-blue-400/70' : 'text-slate-300',
+                          hovered && mapped ? 'text-blue-400 font-bold' : active ? 'text-yellow-400' : mapped ? 'text-blue-400/70' : 'text-slate-300',
                         ].join(' ')}
                       >
                         {hovered && mapped ? '✕' : '▸'}
@@ -935,7 +968,7 @@ export default function VisualMappingView({
                           'px-1.5 py-0.5 rounded text-[9px] font-sans font-bold shadow-sm transition-all',
                           mapped
                             ? hovered
-                              ? 'bg-red-500 border border-red-600 text-white'
+                              ? 'bg-blue-600 border border-blue-700 text-white'
                               : active
                                 ? 'bg-yellow-500 border border-yellow-600 text-slate-950 font-extrabold'
                                 : 'bg-blue-500 border border-blue-600 text-white'
@@ -1003,6 +1036,14 @@ export default function VisualMappingView({
                     <span className="badge-ctrl text-[10px] flex-shrink-0 max-w-[80px] truncate">{label}</span>
                     <span className="text-slate-400 flex-shrink-0">▸</span>
                     <span className="badge-key text-[10px] flex-1 min-w-0 truncate">{m.key_combo}</span>
+                    <button
+                      onClick={() => !isPlaying && onEditMapping && onEditMapping(m)}
+                      disabled={isPlaying}
+                      className="btn-ghost text-slate-500 hover:text-slate-700 text-xs disabled:opacity-40 flex-shrink-0 mr-0.5"
+                      title="Editar acorde"
+                    >
+                      ✎
+                    </button>
                     <button
                       onClick={() => !isPlaying && onDeleteMapping(m)}
                       disabled={isPlaying}

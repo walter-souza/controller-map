@@ -18,12 +18,15 @@ export interface Mapping {
   axis_direction_y: number
   // Optional additional inputs that must all be held simultaneously
   chord_inputs?: ChordInput[]
+  isolate_modifiers?: boolean // deprecated
+  allow_combination?: boolean // default false (shared event)
 }
 
 export interface RepeatSettings {
   initial_delay_ms: number   // default 400
   repeat_interval_ms: number // default 50
   use_interception?: boolean // default false
+  hold_mode?: boolean        // default false
 }
 
 export interface AppConfig {
@@ -45,6 +48,8 @@ export interface AngleNode {
 export interface AngleRegion {
   id: string
   key_combos: string[]
+  isolate_modifiers?: boolean // deprecated
+  allow_combination?: boolean // default false (shared event)
 }
 
 export interface AngleMappingConfig {

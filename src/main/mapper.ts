@@ -43,6 +43,7 @@ interface ChordMappingEntry {
 
 export class Mapper {
   private _deviceId: number
+  private _holdMode = false
   private _onDisconnect: (() => void) | undefined
   private _initialDelay: number  // seconds
   private _repeatInterval: number // seconds
@@ -81,12 +82,14 @@ export class Mapper {
     initialDelay = 0.4,
     repeatInterval = 0.05,
     angleMappings: AngleMappingConfig[] = [],
+    holdMode = false,
   ) {
     this._deviceId = deviceId
     this._onDisconnect = onDisconnect
     this._initialDelay = initialDelay
     this._repeatInterval = repeatInterval
     this._angleMappings = angleMappings
+    this._holdMode = holdMode
     this._buildMappings(mappings)
   }
 
@@ -120,12 +123,66 @@ export class Mapper {
       this._joystick = null
     }
     this._isActive = false
+
+    // Release any keys currently simulated as down if we are in hold mode
+    if (this._holdMode) {
+      for (const key of this._heldKeys) {
+        if (key.startsWith('btn:')) {
+          const btnId = parseInt(key.split(':')[1])
+          const m = this._buttonMappings.get(btnId)
+          if (m) keyboardService.sendKeyUp(m.mapping.key_combo).catch(() => {})
+        } else if (key.startsWith('axis:')) {
+          const parts = key.split(':')
+          const axisId = parseInt(parts[1])
+          const dir = parseInt(parts[2])
+          const entries = this._axisMappings.get(axisId)
+          if (entries) {
+            const m = entries.mappings.find((x) => x.axis_direction === dir)
+            if (m) keyboardService.sendKeyUp(m.key_combo).catch(() => {})
+          }
+        } else if (key.startsWith('diag:')) {
+          const parts = key.split(':')
+          const bx = parseInt(parts[1])
+          const dx = parseInt(parts[2])
+          const by = parseInt(parts[3])
+          const dy = parseInt(parts[4])
+          const m = this._diagonalMappings.find(
+            (x) =>
+              x.button_id === bx &&
+              x.axis_direction === dx &&
+              x.axis_id_y === by &&
+              x.axis_direction_y === dy,
+          )
+          if (m) keyboardService.sendKeyUp(m.key_combo).catch(() => {})
+        } else if (key.startsWith('chord:')) {
+          const entry = this._chordMappings.find((c) => c.holdKey === key)
+          if (entry) keyboardService.sendKeyUp(entry.mapping.key_combo).catch(() => {})
+        } else if (key.startsWith('angle_cfg:')) {
+          const cfgId = key.split(':')[1]
+          const cfg = this._angleMappings.find((c) => c.id === cfgId)
+          const regionId = this._angleHeld.get(cfgId)
+          if (cfg && regionId) {
+            const region = cfg.regions.find((r) => r.id === regionId)
+            if (region) {
+              region.key_combos.forEach((c) => keyboardService.sendKeyUp(c).catch(() => {}))
+            }
+          }
+        }
+      }
+    }
+
     this._heldKeys.clear()
     this._pressTime.clear()
     this._lastFire.clear()
     this._axisState.clear()
     this._angleHeld.clear()
     this._pendingChordButtons.clear()
+  }
+
+  private _getAllowCombo(m: any): boolean {
+    if (m.allow_combination !== undefined) return m.allow_combination
+    if (m.isolate_modifiers !== undefined) return !m.isolate_modifiers
+    return false
   }
 
   // Immediately fires on SDL buttonDown event — no polling lag
@@ -141,14 +198,26 @@ export class Mapper {
     this._heldKeys.add(key)
     this._pressTime.set(key, now)
     this._lastFire.set(key, now)
-    keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+    if (this._holdMode) {
+      keyboardService.sendKeyDown(entry.mapping.key_combo, true, this._getAllowCombo(entry.mapping)).catch(() => {})
+    } else {
+      keyboardService.pressCombo(entry.mapping.key_combo, true, this._getAllowCombo(entry.mapping)).catch(() => {})
+    }
   }
 
   private _onButtonUp = (event: { button: number }) => {
     const key = `btn:${event.button}`
-    this._heldKeys.delete(key)
-    this._pressTime.delete(key)
-    this._lastFire.delete(key)
+    if (this._heldKeys.has(key)) {
+      this._heldKeys.delete(key)
+      this._pressTime.delete(key)
+      this._lastFire.delete(key)
+      if (this._holdMode) {
+        const entry = this._buttonMappings.get(event.button)
+        if (entry) {
+          keyboardService.sendKeyUp(entry.mapping.key_combo, true).catch(() => {})
+        }
+      }
+    }
   }
 
   private _buildMappings(mappings: Mapping[]): void {
@@ -233,14 +302,18 @@ export class Mapper {
           this._lastFire.set(k, now)
           // Cancel any pending individual fires for buttons in this chord
           entry.inputs.filter((i) => i.type === 'button').forEach((i) => this._pendingChordButtons.delete(i.id))
-          keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
-        } else {
+          if (this._holdMode) {
+            keyboardService.sendKeyDown(entry.mapping.key_combo, true, this._getAllowCombo(entry.mapping)).catch(() => {})
+          } else {
+            keyboardService.pressCombo(entry.mapping.key_combo, true, this._getAllowCombo(entry.mapping)).catch(() => {})
+          }
+        } else if (!this._holdMode) {
           const now = Date.now()
           const elapsed = (now - (this._pressTime.get(k) ?? now)) / 1000
           const sinceLast = (now - (this._lastFire.get(k) ?? now)) / 1000
           if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
             this._lastFire.set(k, now)
-            keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+            keyboardService.pressCombo(entry.mapping.key_combo, true, this._getAllowCombo(entry.mapping)).catch(() => {})
           }
         }
       } else if (this._heldKeys.has(entry.holdKey)) {
@@ -250,6 +323,9 @@ export class Mapper {
         // Mark buttons still physically held as coming from a chord release — individual
         // mappings should not fire if they're released shortly after the chord ends.
         entry.inputs.filter((i) => i.type === 'button').forEach((i) => chordReleased.add(i.id))
+        if (this._holdMode) {
+          keyboardService.sendKeyUp(entry.mapping.key_combo, true).catch(() => {})
+        }
       }
     }
 
@@ -298,8 +374,12 @@ export class Mapper {
           this._heldKeys.add(key)
           this._pressTime.set(key, now)
           this._lastFire.set(key, now)
-          keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
-        } else {
+          if (this._holdMode) {
+            keyboardService.sendKeyDown(entry.mapping.key_combo, true, this._getAllowCombo(entry.mapping)).catch(() => {})
+          } else {
+            keyboardService.pressCombo(entry.mapping.key_combo, true, this._getAllowCombo(entry.mapping)).catch(() => {})
+          }
+        } else if (!this._holdMode) {
           // Hold-repeat
           const now = Date.now()
           const pressedAt = this._pressTime.get(key) ?? now
@@ -308,7 +388,7 @@ export class Mapper {
           const sinceLast = (now - lastFiredAt) / 1000
           if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
             this._lastFire.set(key, now)
-            keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+            keyboardService.pressCombo(entry.mapping.key_combo, true, this._getAllowCombo(entry.mapping)).catch(() => {})
           }
         }
       } else {
@@ -319,12 +399,21 @@ export class Mapper {
           // Quick tap (fresh press released before grace window expires) → fire individual.
           // fromChord=true means it was held in a chord that deactivated — don't fire.
           if (!pending.fromChord) {
-            keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+            if (this._holdMode) {
+              keyboardService.sendKeyDown(entry.mapping.key_combo, true, this._getAllowCombo(entry.mapping)).then(() => {
+                keyboardService.sendKeyUp(entry.mapping.key_combo, true).catch(() => {})
+              }).catch(() => {})
+            } else {
+              keyboardService.pressCombo(entry.mapping.key_combo, true, this._getAllowCombo(entry.mapping)).catch(() => {})
+            }
           }
         } else if (this._heldKeys.has(key)) {
           this._heldKeys.delete(key)
           this._pressTime.delete(key)
           this._lastFire.delete(key)
+          if (this._holdMode) {
+            keyboardService.sendKeyUp(entry.mapping.key_combo, true).catch(() => {})
+          }
         }
       }
     }
@@ -347,7 +436,10 @@ export class Mapper {
           (rawValue > 0 ? m.axis_direction > 0 : m.axis_direction < 0)
 
         if (active) {
-          this._handleHeld(key, m.key_combo)
+          if (this._axisState.get(axisId) !== m.axis_direction) {
+            this._axisState.set(axisId, m.axis_direction)
+          }
+          this._handleHeld(key, m.key_combo, m.isolate_modifiers ?? false)
         } else {
           const wasActive = this._axisState.get(axisId) === m.axis_direction
           if (wasActive && Math.abs(rawValue) < AXIS_DEADZONE) {
@@ -355,6 +447,9 @@ export class Mapper {
             this._pressTime.delete(key)
             this._lastFire.delete(key)
             this._axisState.delete(axisId)
+            if (this._holdMode) {
+              keyboardService.sendKeyUp(m.key_combo, true).catch(() => {})
+            }
           }
         }
       }
@@ -382,13 +477,16 @@ export class Mapper {
       const key = `diag:${m.button_id}:${m.axis_direction}:${m.axis_id_y}:${m.axis_direction_y}`
 
       if (xActive && yActive) {
-        this._handleHeld(key, m.key_combo)
+        this._handleHeld(key, m.key_combo, true, this._getAllowCombo(m))
       } else {
         const resting = Math.abs(vx) < AXIS_DEADZONE && Math.abs(vy) < AXIS_DEADZONE
-        if (resting) {
+        if (resting && this._heldKeys.has(key)) {
           this._heldKeys.delete(key)
           this._pressTime.delete(key)
           this._lastFire.delete(key)
+          if (this._holdMode) {
+            keyboardService.sendKeyUp(m.key_combo, true).catch(() => {})
+          }
         }
       }
     }
@@ -410,7 +508,14 @@ export class Mapper {
           this._heldKeys.delete(stateKey)
           this._pressTime.delete(stateKey)
           this._lastFire.delete(stateKey)
+          const prevRegionId = this._angleHeld.get(cfg.id)
           this._angleHeld.delete(cfg.id)
+          if (this._holdMode && prevRegionId) {
+            const prevRegion = cfg.regions.find(r => r.id === prevRegionId)
+            if (prevRegion) {
+              prevRegion.key_combos.forEach(c => keyboardService.sendKeyUp(c, true).catch(() => {}))
+            }
+          }
         }
         continue
       }
@@ -427,13 +532,19 @@ export class Mapper {
         this._pressTime.delete(stateKey)
         this._lastFire.delete(stateKey)
         this._angleHeld.set(cfg.id, region.id)
+        if (this._holdMode && prevRegionId) {
+          const prevRegion = cfg.regions.find(r => r.id === prevRegionId)
+          if (prevRegion) {
+            prevRegion.key_combos.forEach(c => keyboardService.sendKeyUp(c, true).catch(() => {}))
+          }
+        }
       }
 
-      this._handleHeldMulti(stateKey, region.key_combos)
+      this._handleHeldMulti(stateKey, region.key_combos, true, this._getAllowCombo(region))
     }
   }
 
-  private _handleHeld(key: string, combo: string): void {
+  private _handleHeld(key: string, combo: string, isolate = true, allowCombo = false): void {
     const now = Date.now()
 
     if (!this._heldKeys.has(key)) {
@@ -441,41 +552,53 @@ export class Mapper {
       this._heldKeys.add(key)
       this._pressTime.set(key, now)
       this._lastFire.set(key, now)
-      keyboardService.pressCombo(combo).catch(() => {})
+      if (this._holdMode) {
+        keyboardService.sendKeyDown(combo, isolate, allowCombo).catch(() => {})
+      } else {
+        keyboardService.pressCombo(combo, isolate, allowCombo).catch(() => {})
+      }
       return
     }
 
-    const pressedAt = this._pressTime.get(key) ?? now
-    const lastFiredAt = this._lastFire.get(key) ?? now
+    if (!this._holdMode) {
+      const pressedAt = this._pressTime.get(key) ?? now
+      const lastFiredAt = this._lastFire.get(key) ?? now
 
-    const elapsed = (now - pressedAt) / 1000
-    const sinceLast = (now - lastFiredAt) / 1000
+      const elapsed = (now - pressedAt) / 1000
+      const sinceLast = (now - lastFiredAt) / 1000
 
-    if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
-      this._lastFire.set(key, now)
-      keyboardService.pressCombo(combo).catch(() => {})
+      if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
+        this._lastFire.set(key, now)
+        keyboardService.pressCombo(combo, isolate, allowCombo).catch(() => {})
+      }
     }
   }
 
-  private _handleHeldMulti(key: string, combos: string[]): void {
+  private _handleHeldMulti(key: string, combos: string[], isolate = true, allowCombo = false): void {
     const now = Date.now()
 
     if (!this._heldKeys.has(key)) {
       this._heldKeys.add(key)
       this._pressTime.set(key, now)
       this._lastFire.set(key, now)
-      combos.forEach((c) => keyboardService.pressCombo(c).catch(() => {}))
+      if (this._holdMode) {
+        combos.forEach((c) => keyboardService.sendKeyDown(c, isolate, allowCombo).catch(() => {}))
+      } else {
+        combos.forEach((c) => keyboardService.pressCombo(c, isolate, allowCombo).catch(() => {}))
+      }
       return
     }
 
-    const pressedAt = this._pressTime.get(key) ?? now
-    const lastFiredAt = this._lastFire.get(key) ?? now
-    const elapsed = (now - pressedAt) / 1000
-    const sinceLast = (now - lastFiredAt) / 1000
+    if (!this._holdMode) {
+      const pressedAt = this._pressTime.get(key) ?? now
+      const lastFiredAt = this._lastFire.get(key) ?? now
+      const elapsed = (now - pressedAt) / 1000
+      const sinceLast = (now - lastFiredAt) / 1000
 
-    if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
-      this._lastFire.set(key, now)
-      combos.forEach((c) => keyboardService.pressCombo(c).catch(() => {}))
+      if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
+        this._lastFire.set(key, now)
+        combos.forEach((c) => keyboardService.pressCombo(c, isolate, allowCombo).catch(() => {}))
+      }
     }
   }
 }

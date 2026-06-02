@@ -36,6 +36,13 @@ export class KeyboardService {
   private _captureCallback: KeyCaptureCallback | null = null
   private _heldModifiers = new Set<string>()
   private _captureListener: ((e: { keycode: number }) => void) | null = null
+  private _captureKeyUpListener: ((e: { keycode: number }) => void) | null = null
+  private _pressedKeys = new Set<string>()
+  private _heldKeys = new Set<string>()
+  private _activeModifiers = new Set<string>()
+  private _suspendedModifiers = new Set<string>()
+  private _isolatedKeysHeld = new Set<string>()
+  private _combinableModifiers = new Set<string>()
 
   // Interception driver support
   private _useInterception = false
@@ -190,7 +197,17 @@ export class KeyboardService {
    * Press a key combo string like "ctrl+shift+a" or "F5".
    * Fires key down then key up via nut-js or node-interception.
    */
-  async pressCombo(combo: string): Promise<void> {
+  async pressCombo(combo: string, isolate = true, allowCombo = false): Promise<void> {
+    if (isolate) {
+      await this.sendKeyDown(combo, true, allowCombo)
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await this.sendKeyUp(combo, true)
+    } else {
+      await this._pressComboRaw(combo)
+    }
+  }
+
+  private async _pressComboRaw(combo: string): Promise<void> {
     const parts = combo
       .toLowerCase()
       .split('+')
@@ -246,17 +263,263 @@ export class KeyboardService {
     }
   }
 
+  /**
+   * Simulates holding a key combo string down.
+   */
+  async sendKeyDown(combo: string, isolate = true, allowCombo = false): Promise<void> {
+    const parts = combo
+      .toLowerCase()
+      .split('+')
+      .map((p) => p.trim())
+
+    if (isolate) {
+      this._isolatedKeysHeld.add(combo)
+
+      const currentModifiers = new Set<string>()
+      const MODIFIER_NAMES = ['ctrl', 'control', 'alt', 'shift', 'meta', 'win']
+      for (const part of parts) {
+        if (MODIFIER_NAMES.includes(part)) {
+          currentModifiers.add(part)
+        }
+      }
+
+      const toSuspend = Array.from(this._activeModifiers)
+        .filter((m) => !currentModifiers.has(m))
+        .filter((m) => !this._combinableModifiers.has(m))
+
+      if (toSuspend.length > 0) {
+        for (const mod of toSuspend) {
+          if (!this._suspendedModifiers.has(mod)) {
+            await this._releaseSingleKey(mod)
+            this._suspendedModifiers.add(mod)
+          }
+        }
+      }
+    }
+
+    await this._sendKeyDownRaw(combo, allowCombo)
+  }
+
+  private async _sendKeyDownRaw(combo: string, allowCombo = false): Promise<void> {
+    const parts = combo
+      .toLowerCase()
+      .split('+')
+      .map((p) => p.trim())
+
+    const MODIFIER_NAMES = ['ctrl', 'control', 'alt', 'shift', 'meta', 'win']
+    const keysToPress: string[] = []
+
+    for (const part of parts) {
+      if (MODIFIER_NAMES.includes(part)) {
+        this._activeModifiers.add(part)
+        if (allowCombo) {
+          this._combinableModifiers.add(part)
+        }
+        // If an isolated key is active and this modifier is not in it, and it's not combinable, suspend instead of pressing
+        if (this._isolatedKeysHeld.size > 0 && !this._isModifierInIsolatedKeys(part) && !this._combinableModifiers.has(part)) {
+          this._suspendedModifiers.add(part)
+          continue
+        }
+      }
+      keysToPress.push(part)
+    }
+
+    if (keysToPress.length === 0) return
+
+    if (this._useInterception && this._interceptionDevice) {
+      const resolvedKeys = keysToPress.map(part => this._resolveScanCode(part)).filter(k => k !== null) as { code: number; isExtended: boolean }[]
+      if (resolvedKeys.length === 0) return
+
+      try {
+        // Press all keys down in order
+        for (const r of resolvedKeys) {
+          const state = r.isExtended ? 2 : 0 // 2 is KeyState.E0 (Extended Down), 0 is KeyState.DOWN
+          this._interceptionDevice.send({
+            type: 'keyboard',
+            code: r.code,
+            state: state,
+            information: 0
+          })
+        }
+      } catch (e) {
+        console.error("Interception failed to send keys down:", e)
+      }
+      return
+    }
+
+    const keys: import('@nut-tree-fork/nut-js').Key[] = []
+
+    for (const part of keysToPress) {
+      const key = this._resolveKey(part)
+      if (key !== null) keys.push(key)
+    }
+
+    if (keys.length === 0) return
+
+    try {
+      await keyboard.pressKey(...keys)
+    } catch {
+      // ignore — target window may not accept input
+    }
+  }
+
+  /**
+   * Simulates releasing a key combo string.
+   */
+  async sendKeyUp(combo: string, isolate = true): Promise<void> {
+    if (isolate) {
+      this._isolatedKeysHeld.delete(combo)
+    }
+
+    await this._sendKeyUpRaw(combo)
+
+    if (isolate && this._isolatedKeysHeld.size === 0) {
+      // Restore suspended modifiers
+      if (this._suspendedModifiers.size > 0) {
+        for (const mod of this._suspendedModifiers) {
+          if (this._activeModifiers.has(mod)) {
+            await this._pressSingleKey(mod)
+          }
+        }
+        this._suspendedModifiers.clear()
+      }
+    }
+  }
+
+  private async _sendKeyUpRaw(combo: string): Promise<void> {
+    const parts = combo
+      .toLowerCase()
+      .split('+')
+      .map((p) => p.trim())
+
+    const MODIFIER_NAMES = ['ctrl', 'control', 'alt', 'shift', 'meta', 'win']
+    const keysToRelease: string[] = []
+
+    for (const part of parts) {
+      if (MODIFIER_NAMES.includes(part)) {
+        this._activeModifiers.delete(part)
+        this._combinableModifiers.delete(part)
+        if (this._suspendedModifiers.has(part)) {
+          this._suspendedModifiers.delete(part)
+          continue
+        }
+      }
+      keysToRelease.push(part)
+    }
+
+    if (keysToRelease.length === 0) return
+
+    if (this._useInterception && this._interceptionDevice) {
+      const resolvedKeys = keysToRelease.map(part => this._resolveScanCode(part)).filter(k => k !== null) as { code: number; isExtended: boolean }[]
+      if (resolvedKeys.length === 0) return
+
+      try {
+        // Release all keys in reverse order (releasing modifiers last)
+        for (let i = resolvedKeys.length - 1; i >= 0; i--) {
+          const r = resolvedKeys[i]
+          const state = r.isExtended ? 3 : 1 // 3 is KeyState.E0 | KeyState.UP (Extended Up), 1 is KeyState.UP
+          this._interceptionDevice.send({
+            type: 'keyboard',
+            code: r.code,
+            state: state,
+            information: 0
+          })
+        }
+      } catch (e) {
+        console.error("Interception failed to send keys up:", e)
+      }
+      return
+    }
+
+    const keys: import('@nut-tree-fork/nut-js').Key[] = []
+
+    for (const part of keysToRelease) {
+      const key = this._resolveKey(part)
+      if (key !== null) keys.push(key)
+    }
+
+    if (keys.length === 0) return
+
+    try {
+      await keyboard.releaseKey(...keys)
+    } catch {
+      // ignore — target window may not accept input
+    }
+  }
+
+  private _isModifierInIsolatedKeys(mod: string): boolean {
+    for (const combo of this._isolatedKeysHeld) {
+      const parts = combo.toLowerCase().split('+').map(p => p.trim())
+      if (parts.includes(mod)) return true
+    }
+    return false
+  }
+
+  private async _pressSingleKey(name: string): Promise<void> {
+    if (this._useInterception && this._interceptionDevice) {
+      const r = this._resolveScanCode(name)
+      if (!r) return
+      try {
+        const state = r.isExtended ? 2 : 0
+        this._interceptionDevice.send({
+          type: 'keyboard',
+          code: r.code,
+          state: state,
+          information: 0
+        })
+      } catch (e) {
+        console.error("Interception failed to press single key:", e)
+      }
+      return
+    }
+
+    const key = this._resolveKey(name)
+    if (!key) return
+    try {
+      await keyboard.pressKey(key)
+    } catch {
+      // ignore
+    }
+  }
+
+  private async _releaseSingleKey(name: string): Promise<void> {
+    if (this._useInterception && this._interceptionDevice) {
+      const r = this._resolveScanCode(name)
+      if (!r) return
+      try {
+        const state = r.isExtended ? 3 : 1
+        this._interceptionDevice.send({
+          type: 'keyboard',
+          code: r.code,
+          state: state,
+          information: 0
+        })
+      } catch (e) {
+        console.error("Interception failed to release single key:", e)
+      }
+      return
+    }
+
+    const key = this._resolveKey(name)
+    if (!key) return
+    try {
+      await keyboard.releaseKey(key)
+    } catch {
+      // ignore
+    }
+  }
+
   startCapture(callback: KeyCaptureCallback): void {
     if (this._capturing) this.stopCapture()
     this._capturing = true
     this._captureCallback = callback
-    this._heldModifiers.clear()
+    this._pressedKeys.clear()
+    this._heldKeys.clear()
 
-    this._captureListener = (e: { keycode: number }) => {
-      const name = uiohookKeyName(e.keycode)
-      if (!name) return
+    const getNormalizedKeyName = (keycode: number): string | null => {
+      const name = uiohookKeyName(keycode)
+      if (!name) return null
 
-      const MODIFIERS = ['Ctrl', 'LeftCtrl', 'RightCtrl', 'Alt', 'LeftAlt', 'RightAlt', 'Shift', 'LeftShift', 'RightShift', 'Meta', 'LeftMeta', 'RightMeta']
       const modAliases: Record<string, string> = {
         LeftCtrl: 'ctrl', RightCtrl: 'ctrl',
         LeftAlt: 'alt', RightAlt: 'alt',
@@ -265,13 +528,10 @@ export class KeyboardService {
         Ctrl: 'ctrl', Alt: 'alt', Shift: 'shift', Meta: 'meta',
       }
 
-      if (MODIFIERS.includes(name)) {
-        this._heldModifiers.add(modAliases[name])
-        return
+      if (modAliases[name] !== undefined) {
+        return modAliases[name]
       }
 
-      // Non-modifier key pressed — form combo
-      // Normalize uiohook names to friendly display strings
       const KEY_DISPLAY: Record<string, string> = {
         Numrow0: '0', Numrow1: '1', Numrow2: '2', Numrow3: '3', Numrow4: '4',
         Numrow5: '5', Numrow6: '6', Numrow7: '7', Numrow8: '8', Numrow9: '9',
@@ -280,15 +540,48 @@ export class KeyboardService {
         Home: 'home', End: 'end', PageUp: 'pageup', PageDown: 'pagedown',
         ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down',
       }
-      const normalized = KEY_DISPLAY[name] ?? name.toLowerCase()
-      const parts = [...this._heldModifiers, normalized]
-      const combo = parts.join('+')
-      const cb = this._captureCallback
-      this.stopCapture()
-      cb?.(combo)
+
+      return KEY_DISPLAY[name] ?? name.toLowerCase()
+    }
+
+    this._captureListener = (e: { keycode: number }) => {
+      const name = getNormalizedKeyName(e.keycode)
+      if (!name) return
+
+      this._pressedKeys.add(name)
+      this._heldKeys.add(name)
+    }
+
+    this._captureKeyUpListener = (e: { keycode: number }) => {
+      const name = getNormalizedKeyName(e.keycode)
+      if (!name) return
+
+      this._heldKeys.delete(name)
+
+      // Only finish when all pressed keys are fully released
+      if (this._heldKeys.size === 0 && this._pressedKeys.size > 0) {
+        const MODIFIER_ORDER = ['ctrl', 'alt', 'shift', 'meta']
+        const sortedParts = Array.from(this._pressedKeys).sort((a, b) => {
+          const idxA = MODIFIER_ORDER.indexOf(a)
+          const idxB = MODIFIER_ORDER.indexOf(b)
+          const isModA = idxA !== -1
+          const isModB = idxB !== -1
+
+          if (isModA && isModB) return idxA - idxB
+          if (isModA) return -1
+          if (isModB) return 1
+          return a.localeCompare(b)
+        })
+
+        const combo = sortedParts.join('+')
+        const cb = this._captureCallback
+        this.stopCapture()
+        cb?.(combo)
+      }
     }
 
     uIOhook.on('keydown', this._captureListener)
+    uIOhook.on('keyup', this._captureKeyUpListener)
     uIOhook.start()
   }
 
@@ -299,8 +592,14 @@ export class KeyboardService {
       uIOhook.off('keydown', this._captureListener)
       this._captureListener = null
     }
+    if (this._captureKeyUpListener) {
+      uIOhook.off('keyup', this._captureKeyUpListener)
+      this._captureKeyUpListener = null
+    }
     this._captureCallback = null
     this._heldModifiers.clear()
+    this._pressedKeys.clear()
+    this._heldKeys.clear()
     try { uIOhook.stop() } catch { /* ignore */ }
   }
 
