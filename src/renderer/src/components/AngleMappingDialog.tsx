@@ -236,6 +236,21 @@ export default function AngleMappingDialog({ initial, defaultAxisX, defaultAxisY
             />
             <span className="text-slate-400 w-8">{config.deadzone.toFixed(2)}</span>
           </label>
+          <label className="flex items-center gap-1.5 cursor-pointer ml-auto">
+            <input
+              type="checkbox"
+              checked={config.regions.every((r) => r.isolate_modifiers)}
+              onChange={(e) => {
+                const checked = e.target.checked
+                setConfig((prev) => ({
+                  ...prev,
+                  regions: prev.regions.map((r) => ({ ...r, isolate_modifiers: checked })),
+                }))
+              }}
+              className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="text-slate-500 select-none">Isolar modificadores</span>
+          </label>
         </div>
 
         {/* SVG editor */}

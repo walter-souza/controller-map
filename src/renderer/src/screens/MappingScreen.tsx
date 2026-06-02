@@ -516,6 +516,11 @@ export default function MappingScreen({ device, onBack }: Props) {
                     <span className="ml-1 text-slate-300">· {cfg.regions.length} regiões</span>
                   </div>
                 </div>
+                {cfg.regions.some((r) => r.isolate_modifiers) && (
+                  <span className="inline-block rounded-full px-2 py-0.5 text-[9px] font-bold bg-amber-100 text-amber-800 uppercase tracking-wider">
+                    Isolado
+                  </span>
+                )}
                 <button
                   onClick={() => setEditingAngle(cfg)}
                   disabled={isPlaying}
