@@ -599,6 +599,8 @@ export default function MappingScreen({ device, onBack }: Props) {
           initial={editingAngle ?? undefined}
           defaultAxisX={pendingAngleStick?.axis_x}
           defaultAxisY={pendingAngleStick?.axis_y}
+          existingMappings={mappings}
+          existingAngleMappings={angleMappings}
           onConfirm={(cfg) => { handleAngleSaved(cfg); setPendingAngleStick(null) }}
           onCancel={() => { setShowAngleAdd(false); setEditingAngle(null); setPendingAngleStick(null) }}
         />

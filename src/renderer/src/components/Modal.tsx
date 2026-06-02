@@ -5,12 +5,13 @@ interface Props {
   subtitle?: string
   onClose: () => void
   children: ReactNode
+  widthClassName?: string
 }
 
-export default function Modal({ title, subtitle, onClose, children }: Props) {
+export default function Modal({ title, subtitle, onClose, children, widthClassName }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+      <div className={`bg-white rounded-xl shadow-xl w-full ${widthClassName ?? 'max-w-md'} overflow-hidden`}>
         {/* Header */}
         <div className="bg-slate-800 px-5 py-4 flex items-start justify-between">
           <div>

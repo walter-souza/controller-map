@@ -36,6 +36,9 @@ export class KeyboardService {
   private _captureCallback: KeyCaptureCallback | null = null
   private _heldModifiers = new Set<string>()
   private _captureListener: ((e: { keycode: number }) => void) | null = null
+  private _captureKeyUpListener: ((e: { keycode: number }) => void) | null = null
+  private _pressedKeys = new Set<string>()
+  private _heldKeys = new Set<string>()
   private _activeModifiers = new Set<string>()
   private _suspendedModifiers = new Set<string>()
   private _isolatedKeysHeld = new Set<string>()
@@ -510,13 +513,13 @@ export class KeyboardService {
     if (this._capturing) this.stopCapture()
     this._capturing = true
     this._captureCallback = callback
-    this._heldModifiers.clear()
+    this._pressedKeys.clear()
+    this._heldKeys.clear()
 
-    this._captureListener = (e: { keycode: number }) => {
-      const name = uiohookKeyName(e.keycode)
-      if (!name) return
+    const getNormalizedKeyName = (keycode: number): string | null => {
+      const name = uiohookKeyName(keycode)
+      if (!name) return null
 
-      const MODIFIERS = ['Ctrl', 'LeftCtrl', 'RightCtrl', 'Alt', 'LeftAlt', 'RightAlt', 'Shift', 'LeftShift', 'RightShift', 'Meta', 'LeftMeta', 'RightMeta']
       const modAliases: Record<string, string> = {
         LeftCtrl: 'ctrl', RightCtrl: 'ctrl',
         LeftAlt: 'alt', RightAlt: 'alt',
@@ -525,13 +528,10 @@ export class KeyboardService {
         Ctrl: 'ctrl', Alt: 'alt', Shift: 'shift', Meta: 'meta',
       }
 
-      if (MODIFIERS.includes(name)) {
-        this._heldModifiers.add(modAliases[name])
-        return
+      if (modAliases[name] !== undefined) {
+        return modAliases[name]
       }
 
-      // Non-modifier key pressed — form combo
-      // Normalize uiohook names to friendly display strings
       const KEY_DISPLAY: Record<string, string> = {
         Numrow0: '0', Numrow1: '1', Numrow2: '2', Numrow3: '3', Numrow4: '4',
         Numrow5: '5', Numrow6: '6', Numrow7: '7', Numrow8: '8', Numrow9: '9',
@@ -540,15 +540,48 @@ export class KeyboardService {
         Home: 'home', End: 'end', PageUp: 'pageup', PageDown: 'pagedown',
         ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down',
       }
-      const normalized = KEY_DISPLAY[name] ?? name.toLowerCase()
-      const parts = [...this._heldModifiers, normalized]
-      const combo = parts.join('+')
-      const cb = this._captureCallback
-      this.stopCapture()
-      cb?.(combo)
+
+      return KEY_DISPLAY[name] ?? name.toLowerCase()
+    }
+
+    this._captureListener = (e: { keycode: number }) => {
+      const name = getNormalizedKeyName(e.keycode)
+      if (!name) return
+
+      this._pressedKeys.add(name)
+      this._heldKeys.add(name)
+    }
+
+    this._captureKeyUpListener = (e: { keycode: number }) => {
+      const name = getNormalizedKeyName(e.keycode)
+      if (!name) return
+
+      this._heldKeys.delete(name)
+
+      // Only finish when all pressed keys are fully released
+      if (this._heldKeys.size === 0 && this._pressedKeys.size > 0) {
+        const MODIFIER_ORDER = ['ctrl', 'alt', 'shift', 'meta']
+        const sortedParts = Array.from(this._pressedKeys).sort((a, b) => {
+          const idxA = MODIFIER_ORDER.indexOf(a)
+          const idxB = MODIFIER_ORDER.indexOf(b)
+          const isModA = idxA !== -1
+          const isModB = idxB !== -1
+
+          if (isModA && isModB) return idxA - idxB
+          if (isModA) return -1
+          if (isModB) return 1
+          return a.localeCompare(b)
+        })
+
+        const combo = sortedParts.join('+')
+        const cb = this._captureCallback
+        this.stopCapture()
+        cb?.(combo)
+      }
     }
 
     uIOhook.on('keydown', this._captureListener)
+    uIOhook.on('keyup', this._captureKeyUpListener)
     uIOhook.start()
   }
 
@@ -559,8 +592,14 @@ export class KeyboardService {
       uIOhook.off('keydown', this._captureListener)
       this._captureListener = null
     }
+    if (this._captureKeyUpListener) {
+      uIOhook.off('keyup', this._captureKeyUpListener)
+      this._captureKeyUpListener = null
+    }
     this._captureCallback = null
     this._heldModifiers.clear()
+    this._pressedKeys.clear()
+    this._heldKeys.clear()
     try { uIOhook.stop() } catch { /* ignore */ }
   }
 
