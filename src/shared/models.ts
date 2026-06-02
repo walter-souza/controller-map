@@ -18,6 +18,7 @@ export interface Mapping {
   axis_direction_y: number
   // Optional additional inputs that must all be held simultaneously
   chord_inputs?: ChordInput[]
+  isolate_modifiers?: boolean // default false
 }
 
 export interface RepeatSettings {
@@ -46,6 +47,7 @@ export interface AngleNode {
 export interface AngleRegion {
   id: string
   key_combos: string[]
+  isolate_modifiers?: boolean // default false
 }
 
 export interface AngleMappingConfig {

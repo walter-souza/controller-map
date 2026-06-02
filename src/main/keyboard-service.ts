@@ -36,6 +36,7 @@ export class KeyboardService {
   private _captureCallback: KeyCaptureCallback | null = null
   private _heldModifiers = new Set<string>()
   private _captureListener: ((e: { keycode: number }) => void) | null = null
+  private _activeModifiers = new Set<string>()
 
   // Interception driver support
   private _useInterception = false
@@ -190,7 +191,15 @@ export class KeyboardService {
    * Press a key combo string like "ctrl+shift+a" or "F5".
    * Fires key down then key up via nut-js or node-interception.
    */
-  async pressCombo(combo: string): Promise<void> {
+  async pressCombo(combo: string, isolate = false): Promise<void> {
+    if (isolate) {
+      await this.executeIsolated(combo, () => this._pressComboRaw(combo))
+    } else {
+      await this._pressComboRaw(combo)
+    }
+  }
+
+  private async _pressComboRaw(combo: string): Promise<void> {
     const parts = combo
       .toLowerCase()
       .split('+')
@@ -249,11 +258,26 @@ export class KeyboardService {
   /**
    * Simulates holding a key combo string down.
    */
-  async sendKeyDown(combo: string): Promise<void> {
+  async sendKeyDown(combo: string, isolate = false): Promise<void> {
+    if (isolate) {
+      await this.executeIsolated(combo, () => this._sendKeyDownRaw(combo))
+    } else {
+      await this._sendKeyDownRaw(combo)
+    }
+  }
+
+  private async _sendKeyDownRaw(combo: string): Promise<void> {
     const parts = combo
       .toLowerCase()
       .split('+')
       .map((p) => p.trim())
+
+    const MODIFIER_NAMES = ['ctrl', 'control', 'alt', 'shift', 'meta', 'win']
+    for (const part of parts) {
+      if (MODIFIER_NAMES.includes(part)) {
+        this._activeModifiers.add(part)
+      }
+    }
 
     if (this._useInterception && this._interceptionDevice) {
       const resolvedKeys = parts.map(part => this._resolveScanCode(part)).filter(k => k !== null) as { code: number; isExtended: boolean }[]
@@ -295,11 +319,26 @@ export class KeyboardService {
   /**
    * Simulates releasing a key combo string.
    */
-  async sendKeyUp(combo: string): Promise<void> {
+  async sendKeyUp(combo: string, isolate = false): Promise<void> {
+    if (isolate) {
+      await this.executeIsolated(combo, () => this._sendKeyUpRaw(combo))
+    } else {
+      await this._sendKeyUpRaw(combo)
+    }
+  }
+
+  private async _sendKeyUpRaw(combo: string): Promise<void> {
     const parts = combo
       .toLowerCase()
       .split('+')
       .map((p) => p.trim())
+
+    const MODIFIER_NAMES = ['ctrl', 'control', 'alt', 'shift', 'meta', 'win']
+    for (const part of parts) {
+      if (MODIFIER_NAMES.includes(part)) {
+        this._activeModifiers.delete(part)
+      }
+    }
 
     if (this._useInterception && this._interceptionDevice) {
       const resolvedKeys = parts.map(part => this._resolveScanCode(part)).filter(k => k !== null) as { code: number; isExtended: boolean }[]
@@ -336,6 +375,94 @@ export class KeyboardService {
       await keyboard.releaseKey(...keys)
     } catch {
       // ignore — target window may not accept input
+    }
+  }
+
+  /**
+   * Helper to temporarily release active modifiers, execute an action, and restore them.
+   */
+  async executeIsolated(combo: string, action: () => Promise<void> | void): Promise<void> {
+    const parts = combo
+      .toLowerCase()
+      .split('+')
+      .map((p) => p.trim())
+
+    const currentModifiers = new Set<string>()
+    const MODIFIER_NAMES = ['ctrl', 'control', 'alt', 'shift', 'meta', 'win']
+    for (const part of parts) {
+      if (MODIFIER_NAMES.includes(part)) {
+        currentModifiers.add(part)
+      }
+    }
+
+    const toSuspend = Array.from(this._activeModifiers).filter((m) => !currentModifiers.has(m))
+
+    if (toSuspend.length > 0) {
+      for (const mod of toSuspend) {
+        await this._releaseSingleKey(mod)
+      }
+    }
+
+    await action()
+
+    if (toSuspend.length > 0) {
+      for (const mod of toSuspend) {
+        await this._pressSingleKey(mod)
+      }
+    }
+  }
+
+  private async _pressSingleKey(name: string): Promise<void> {
+    if (this._useInterception && this._interceptionDevice) {
+      const r = this._resolveScanCode(name)
+      if (!r) return
+      try {
+        const state = r.isExtended ? 2 : 0
+        this._interceptionDevice.send({
+          type: 'keyboard',
+          code: r.code,
+          state: state,
+          information: 0
+        })
+      } catch (e) {
+        console.error("Interception failed to press single key:", e)
+      }
+      return
+    }
+
+    const key = this._resolveKey(name)
+    if (!key) return
+    try {
+      await keyboard.pressKey(key)
+    } catch {
+      // ignore
+    }
+  }
+
+  private async _releaseSingleKey(name: string): Promise<void> {
+    if (this._useInterception && this._interceptionDevice) {
+      const r = this._resolveScanCode(name)
+      if (!r) return
+      try {
+        const state = r.isExtended ? 3 : 1
+        this._interceptionDevice.send({
+          type: 'keyboard',
+          code: r.code,
+          state: state,
+          information: 0
+        })
+      } catch (e) {
+        console.error("Interception failed to release single key:", e)
+      }
+      return
+    }
+
+    const key = this._resolveKey(name)
+    if (!key) return
+    try {
+      await keyboard.releaseKey(key)
+    } catch {
+      // ignore
     }
   }
 

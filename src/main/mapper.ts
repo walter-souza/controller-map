@@ -193,9 +193,9 @@ export class Mapper {
     this._pressTime.set(key, now)
     this._lastFire.set(key, now)
     if (this._holdMode) {
-      keyboardService.sendKeyDown(entry.mapping.key_combo).catch(() => {})
+      keyboardService.sendKeyDown(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).catch(() => {})
     } else {
-      keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+      keyboardService.pressCombo(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).catch(() => {})
     }
   }
 
@@ -208,7 +208,7 @@ export class Mapper {
       if (this._holdMode) {
         const entry = this._buttonMappings.get(event.button)
         if (entry) {
-          keyboardService.sendKeyUp(entry.mapping.key_combo).catch(() => {})
+          keyboardService.sendKeyUp(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).catch(() => {})
         }
       }
     }
@@ -297,9 +297,9 @@ export class Mapper {
           // Cancel any pending individual fires for buttons in this chord
           entry.inputs.filter((i) => i.type === 'button').forEach((i) => this._pendingChordButtons.delete(i.id))
           if (this._holdMode) {
-            keyboardService.sendKeyDown(entry.mapping.key_combo).catch(() => {})
+            keyboardService.sendKeyDown(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).catch(() => {})
           } else {
-            keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+            keyboardService.pressCombo(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).catch(() => {})
           }
         } else if (!this._holdMode) {
           const now = Date.now()
@@ -307,7 +307,7 @@ export class Mapper {
           const sinceLast = (now - (this._lastFire.get(k) ?? now)) / 1000
           if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
             this._lastFire.set(k, now)
-            keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+            keyboardService.pressCombo(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).catch(() => {})
           }
         }
       } else if (this._heldKeys.has(entry.holdKey)) {
@@ -318,7 +318,7 @@ export class Mapper {
         // mappings should not fire if they're released shortly after the chord ends.
         entry.inputs.filter((i) => i.type === 'button').forEach((i) => chordReleased.add(i.id))
         if (this._holdMode) {
-          keyboardService.sendKeyUp(entry.mapping.key_combo).catch(() => {})
+          keyboardService.sendKeyUp(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).catch(() => {})
         }
       }
     }
@@ -369,9 +369,9 @@ export class Mapper {
           this._pressTime.set(key, now)
           this._lastFire.set(key, now)
           if (this._holdMode) {
-            keyboardService.sendKeyDown(entry.mapping.key_combo).catch(() => {})
+            keyboardService.sendKeyDown(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).catch(() => {})
           } else {
-            keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+            keyboardService.pressCombo(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).catch(() => {})
           }
         } else if (!this._holdMode) {
           // Hold-repeat
@@ -382,7 +382,7 @@ export class Mapper {
           const sinceLast = (now - lastFiredAt) / 1000
           if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
             this._lastFire.set(key, now)
-            keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+            keyboardService.pressCombo(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).catch(() => {})
           }
         }
       } else {
@@ -394,11 +394,11 @@ export class Mapper {
           // fromChord=true means it was held in a chord that deactivated — don't fire.
           if (!pending.fromChord) {
             if (this._holdMode) {
-              keyboardService.sendKeyDown(entry.mapping.key_combo).then(() => {
-                keyboardService.sendKeyUp(entry.mapping.key_combo).catch(() => {})
+              keyboardService.sendKeyDown(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).then(() => {
+                keyboardService.sendKeyUp(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).catch(() => {})
               }).catch(() => {})
             } else {
-              keyboardService.pressCombo(entry.mapping.key_combo).catch(() => {})
+              keyboardService.pressCombo(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).catch(() => {})
             }
           }
         } else if (this._heldKeys.has(key)) {
@@ -406,7 +406,7 @@ export class Mapper {
           this._pressTime.delete(key)
           this._lastFire.delete(key)
           if (this._holdMode) {
-            keyboardService.sendKeyUp(entry.mapping.key_combo).catch(() => {})
+            keyboardService.sendKeyUp(entry.mapping.key_combo, entry.mapping.isolate_modifiers ?? false).catch(() => {})
           }
         }
       }
@@ -433,7 +433,7 @@ export class Mapper {
           if (this._axisState.get(axisId) !== m.axis_direction) {
             this._axisState.set(axisId, m.axis_direction)
           }
-          this._handleHeld(key, m.key_combo)
+          this._handleHeld(key, m.key_combo, m.isolate_modifiers ?? false)
         } else {
           const wasActive = this._axisState.get(axisId) === m.axis_direction
           if (wasActive && Math.abs(rawValue) < AXIS_DEADZONE) {
@@ -442,7 +442,7 @@ export class Mapper {
             this._lastFire.delete(key)
             this._axisState.delete(axisId)
             if (this._holdMode) {
-              keyboardService.sendKeyUp(m.key_combo).catch(() => {})
+              keyboardService.sendKeyUp(m.key_combo, m.isolate_modifiers ?? false).catch(() => {})
             }
           }
         }
@@ -471,7 +471,7 @@ export class Mapper {
       const key = `diag:${m.button_id}:${m.axis_direction}:${m.axis_id_y}:${m.axis_direction_y}`
 
       if (xActive && yActive) {
-        this._handleHeld(key, m.key_combo)
+        this._handleHeld(key, m.key_combo, m.isolate_modifiers ?? false)
       } else {
         const resting = Math.abs(vx) < AXIS_DEADZONE && Math.abs(vy) < AXIS_DEADZONE
         if (resting && this._heldKeys.has(key)) {
@@ -479,7 +479,7 @@ export class Mapper {
           this._pressTime.delete(key)
           this._lastFire.delete(key)
           if (this._holdMode) {
-            keyboardService.sendKeyUp(m.key_combo).catch(() => {})
+            keyboardService.sendKeyUp(m.key_combo, m.isolate_modifiers ?? false).catch(() => {})
           }
         }
       }
@@ -507,7 +507,7 @@ export class Mapper {
           if (this._holdMode && prevRegionId) {
             const prevRegion = cfg.regions.find(r => r.id === prevRegionId)
             if (prevRegion) {
-              prevRegion.key_combos.forEach(c => keyboardService.sendKeyUp(c).catch(() => {}))
+              prevRegion.key_combos.forEach(c => keyboardService.sendKeyUp(c, prevRegion.isolate_modifiers ?? false).catch(() => {}))
             }
           }
         }
@@ -529,16 +529,16 @@ export class Mapper {
         if (this._holdMode && prevRegionId) {
           const prevRegion = cfg.regions.find(r => r.id === prevRegionId)
           if (prevRegion) {
-            prevRegion.key_combos.forEach(c => keyboardService.sendKeyUp(c).catch(() => {}))
+            prevRegion.key_combos.forEach(c => keyboardService.sendKeyUp(c, prevRegion.isolate_modifiers ?? false).catch(() => {}))
           }
         }
       }
 
-      this._handleHeldMulti(stateKey, region.key_combos)
+      this._handleHeldMulti(stateKey, region.key_combos, region.isolate_modifiers ?? false)
     }
   }
 
-  private _handleHeld(key: string, combo: string): void {
+  private _handleHeld(key: string, combo: string, isolate = false): void {
     const now = Date.now()
 
     if (!this._heldKeys.has(key)) {
@@ -547,9 +547,9 @@ export class Mapper {
       this._pressTime.set(key, now)
       this._lastFire.set(key, now)
       if (this._holdMode) {
-        keyboardService.sendKeyDown(combo).catch(() => {})
+        keyboardService.sendKeyDown(combo, isolate).catch(() => {})
       } else {
-        keyboardService.pressCombo(combo).catch(() => {})
+        keyboardService.pressCombo(combo, isolate).catch(() => {})
       }
       return
     }
@@ -563,12 +563,12 @@ export class Mapper {
 
       if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
         this._lastFire.set(key, now)
-        keyboardService.pressCombo(combo).catch(() => {})
+        keyboardService.pressCombo(combo, isolate).catch(() => {})
       }
     }
   }
 
-  private _handleHeldMulti(key: string, combos: string[]): void {
+  private _handleHeldMulti(key: string, combos: string[], isolate = false): void {
     const now = Date.now()
 
     if (!this._heldKeys.has(key)) {
@@ -576,9 +576,9 @@ export class Mapper {
       this._pressTime.set(key, now)
       this._lastFire.set(key, now)
       if (this._holdMode) {
-        combos.forEach((c) => keyboardService.sendKeyDown(c).catch(() => {}))
+        combos.forEach((c) => keyboardService.sendKeyDown(c, isolate).catch(() => {}))
       } else {
-        combos.forEach((c) => keyboardService.pressCombo(c).catch(() => {}))
+        combos.forEach((c) => keyboardService.pressCombo(c, isolate).catch(() => {}))
       }
       return
     }
@@ -591,7 +591,7 @@ export class Mapper {
 
       if (elapsed >= this._initialDelay && sinceLast >= this._repeatInterval) {
         this._lastFire.set(key, now)
-        combos.forEach((c) => keyboardService.pressCombo(c).catch(() => {}))
+        combos.forEach((c) => keyboardService.pressCombo(c, isolate).catch(() => {}))
       }
     }
   }
