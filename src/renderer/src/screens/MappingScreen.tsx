@@ -495,9 +495,9 @@ export default function MappingScreen({ device, onBack }: Props) {
             <span className="badge-ctrl">{controlLabel(m, controllerProfile ?? { inputs: [] } as ControllerProfile)}</span>
             <span className="text-slate-300 text-sm">──►</span>
             <span className="badge-key">{m.key_combo}</span>
-            {m.isolate_modifiers && (
-              <span className="inline-block rounded-full px-2 py-0.5 text-[9px] font-bold bg-amber-100 text-amber-800 uppercase tracking-wider">
-                Isolado
+            {m.allow_combination && (
+              <span className="inline-block rounded-full px-2 py-0.5 text-[9px] font-bold bg-green-100 text-green-800 uppercase tracking-wider">
+                Compartilhado
               </span>
             )}
             <div className="flex-1" />
@@ -534,9 +534,9 @@ export default function MappingScreen({ device, onBack }: Props) {
                     <span className="ml-1 text-slate-300">· {cfg.regions.length} regiões</span>
                   </div>
                 </div>
-                {cfg.regions.some((r) => r.isolate_modifiers) && (
-                  <span className="inline-block rounded-full px-2 py-0.5 text-[9px] font-bold bg-amber-100 text-amber-800 uppercase tracking-wider">
-                    Isolado
+                {cfg.regions.some((r) => r.allow_combination) && (
+                  <span className="inline-block rounded-full px-2 py-0.5 text-[9px] font-bold bg-green-100 text-green-800 uppercase tracking-wider">
+                    Compartilhado
                   </span>
                 )}
                 <button

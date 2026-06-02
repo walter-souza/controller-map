@@ -58,7 +58,11 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
   })
 
   const [keyCombo, setKeyCombo] = useState<string | null>(editingMapping?.key_combo ?? null)
-  const [isolateModifiers, setIsolateModifiers] = useState(editingMapping?.isolate_modifiers ?? false)
+  const [allowCombination, setAllowCombination] = useState(() => {
+    if (editingMapping?.allow_combination !== undefined) return editingMapping.allow_combination
+    if (editingMapping?.isolate_modifiers !== undefined) return !editingMapping.isolate_modifiers
+    return false
+  })
 
   // Chord capture: accumulates all simultaneously held buttons; fires on release
   useEffect(() => {
@@ -149,7 +153,7 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
       axis_id_y: primary.type === 'diagonal' ? primary.axis_id_y : null,
       axis_direction_y: primary.type === 'diagonal' ? primary.axis_direction_y : 0,
       chord_inputs: chordInputs.length > 0 ? chordInputs : undefined,
-      isolate_modifiers: isolateModifiers,
+      allow_combination: allowCombination,
     }
     onConfirm(mapping)
   }
@@ -243,14 +247,14 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
           <label className="flex items-start gap-2.5 cursor-pointer p-3 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors">
             <input
               type="checkbox"
-              checked={isolateModifiers}
-              onChange={(e) => setIsolateModifiers(e.target.checked)}
+              checked={allowCombination}
+              onChange={(e) => setAllowCombination(e.target.checked)}
               className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer mt-0.5"
             />
             <div>
-              <span className="text-xs font-bold text-slate-700 block">Isolar Teclas Modificadoras</span>
+              <span className="text-xs font-bold text-slate-700 block">Evento Compartilhado (Permitir Combinação)</span>
               <span className="text-[10px] text-slate-400 block mt-0.5 leading-tight">
-                Evita que modificadores (Ctrl/Alt/Shift) segurados por outros botões se combinem com este atalho indesejadamente.
+                Permite que esta tecla/modificador se combine com outros botões pressionados ao mesmo tempo. Por padrão (desativado), cada botão é isolado individualmente.
               </span>
             </div>
           </label>

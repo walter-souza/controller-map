@@ -39,6 +39,7 @@ export class KeyboardService {
   private _activeModifiers = new Set<string>()
   private _suspendedModifiers = new Set<string>()
   private _isolatedKeysHeld = new Set<string>()
+  private _combinableModifiers = new Set<string>()
 
   // Interception driver support
   private _useInterception = false
@@ -193,9 +194,9 @@ export class KeyboardService {
    * Press a key combo string like "ctrl+shift+a" or "F5".
    * Fires key down then key up via nut-js or node-interception.
    */
-  async pressCombo(combo: string, isolate = false): Promise<void> {
+  async pressCombo(combo: string, isolate = true, allowCombo = false): Promise<void> {
     if (isolate) {
-      await this.sendKeyDown(combo, true)
+      await this.sendKeyDown(combo, true, allowCombo)
       await new Promise(resolve => setTimeout(resolve, 10))
       await this.sendKeyUp(combo, true)
     } else {
@@ -262,7 +263,7 @@ export class KeyboardService {
   /**
    * Simulates holding a key combo string down.
    */
-  async sendKeyDown(combo: string, isolate = false): Promise<void> {
+  async sendKeyDown(combo: string, isolate = true, allowCombo = false): Promise<void> {
     const parts = combo
       .toLowerCase()
       .split('+')
@@ -279,7 +280,10 @@ export class KeyboardService {
         }
       }
 
-      const toSuspend = Array.from(this._activeModifiers).filter((m) => !currentModifiers.has(m))
+      const toSuspend = Array.from(this._activeModifiers)
+        .filter((m) => !currentModifiers.has(m))
+        .filter((m) => !this._combinableModifiers.has(m))
+
       if (toSuspend.length > 0) {
         for (const mod of toSuspend) {
           if (!this._suspendedModifiers.has(mod)) {
@@ -290,10 +294,10 @@ export class KeyboardService {
       }
     }
 
-    await this._sendKeyDownRaw(combo)
+    await this._sendKeyDownRaw(combo, allowCombo)
   }
 
-  private async _sendKeyDownRaw(combo: string): Promise<void> {
+  private async _sendKeyDownRaw(combo: string, allowCombo = false): Promise<void> {
     const parts = combo
       .toLowerCase()
       .split('+')
@@ -305,8 +309,11 @@ export class KeyboardService {
     for (const part of parts) {
       if (MODIFIER_NAMES.includes(part)) {
         this._activeModifiers.add(part)
-        // If an isolated key is active and this modifier is not in it, suspend instead of pressing
-        if (this._isolatedKeysHeld.size > 0 && !this._isModifierInIsolatedKeys(part)) {
+        if (allowCombo) {
+          this._combinableModifiers.add(part)
+        }
+        // If an isolated key is active and this modifier is not in it, and it's not combinable, suspend instead of pressing
+        if (this._isolatedKeysHeld.size > 0 && !this._isModifierInIsolatedKeys(part) && !this._combinableModifiers.has(part)) {
           this._suspendedModifiers.add(part)
           continue
         }
@@ -356,7 +363,7 @@ export class KeyboardService {
   /**
    * Simulates releasing a key combo string.
    */
-  async sendKeyUp(combo: string, isolate = false): Promise<void> {
+  async sendKeyUp(combo: string, isolate = true): Promise<void> {
     if (isolate) {
       this._isolatedKeysHeld.delete(combo)
     }
@@ -388,6 +395,7 @@ export class KeyboardService {
     for (const part of parts) {
       if (MODIFIER_NAMES.includes(part)) {
         this._activeModifiers.delete(part)
+        this._combinableModifiers.delete(part)
         if (this._suspendedModifiers.has(part)) {
           this._suspendedModifiers.delete(part)
           continue

@@ -67,7 +67,15 @@ function detectPreset(cfg: AngleMappingConfig): Preset {
 
 export default function AngleMappingDialog({ initial, defaultAxisX, defaultAxisY, onConfirm, onCancel }: Props) {
   const [config, setConfig] = useState<AngleMappingConfig>(() => {
-    if (initial) return initial
+    if (initial) {
+      return {
+        ...initial,
+        regions: initial.regions.map(r => ({
+          ...r,
+          allow_combination: r.allow_combination ?? (r.isolate_modifiers !== undefined ? !r.isolate_modifiers : false)
+        }))
+      }
+    }
     const cfg = createFromPreset('4-wasd')
     return {
       ...cfg,
@@ -239,17 +247,21 @@ export default function AngleMappingDialog({ initial, defaultAxisX, defaultAxisY
           <label className="flex items-center gap-1.5 cursor-pointer ml-auto">
             <input
               type="checkbox"
-              checked={config.regions.every((r) => r.isolate_modifiers)}
+              checked={config.regions.every((r) => r.allow_combination)}
               onChange={(e) => {
                 const checked = e.target.checked
                 setConfig((prev) => ({
                   ...prev,
-                  regions: prev.regions.map((r) => ({ ...r, isolate_modifiers: checked })),
+                  regions: prev.regions.map((r) => ({
+                    ...r,
+                    allow_combination: checked,
+                    isolate_modifiers: !checked, // deprecated sync
+                  })),
                 }))
               }}
               className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
             />
-            <span className="text-slate-500 select-none">Isolar modificadores</span>
+            <span className="text-slate-500 select-none">Disparo Compartilhado</span>
           </label>
         </div>
 
