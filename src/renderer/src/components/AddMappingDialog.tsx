@@ -12,6 +12,7 @@ interface Props {
   // Resolve profile display name for a captured input (button "A", axis "LS↑", etc.)
   resolveInputName?: (type: string, buttonId: number, axisDirection?: number) => string
   editingMapping?: Mapping // Optional mapping to edit
+  onRemove?: (mapping: Mapping) => void // Optional callback to remove mapping
 }
 
 // Capture phase state machine:
@@ -19,7 +20,7 @@ interface Props {
 // - Preset flow:  key → ready  (chord-capture skipped)
 type CapturePhase = 'chord-capture' | 'key' | 'ready'
 
-export default function AddMappingDialog({ deviceId, existingMappings, onConfirm, onCancel, presetInput, resolveInputName, editingMapping }: Props) {
+export default function AddMappingDialog({ deviceId, existingMappings, onConfirm, onCancel, presetInput, resolveInputName, editingMapping, onRemove }: Props) {
   const [phase, setPhase] = useState<CapturePhase>(() => {
     if (editingMapping) return 'ready'
     return presetInput ? 'key' : 'chord-capture'
@@ -153,6 +154,12 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
     onConfirm(mapping)
   }
 
+  const handleRemove = () => {
+    if (editingMapping && onRemove) {
+      onRemove(editingMapping)
+    }
+  }
+
   const retryCapture = () => {
     if (presetInput) {
       // Preset flow: reset to key phase keeping the preset input
@@ -255,6 +262,14 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
       )}
 
       <div className="border-t border-slate-200 px-5 py-3 flex justify-end gap-2 bg-slate-50 rounded-b-lg">
+        {editingMapping && onRemove && (
+          <button
+            onClick={handleRemove}
+            className="btn-danger mr-auto"
+          >
+            Remover Mapeamento
+          </button>
+        )}
         <button onClick={onCancel} className="btn-secondary">Cancelar</button>
         <button
           onClick={handleConfirm}

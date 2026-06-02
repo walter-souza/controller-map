@@ -584,6 +584,14 @@ export default function MappingScreen({ device, onBack }: Props) {
             setEditingMapping(null)
             setAddPreset(undefined)
           }}
+          onRemove={(m) => {
+            const idx = mappings.findIndex((x) => sameKey(x, m))
+            if (idx !== -1) {
+              const next = mappings.filter((_, i) => i !== idx)
+              saveMappings(next)
+            }
+            setEditingMapping(null)
+          }}
         />
       )}
       {(showAngleAdd || editingAngle) && (
