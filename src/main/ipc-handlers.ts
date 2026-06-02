@@ -106,6 +106,7 @@ export function registerIpcHandlers(): void {
       activeMapper.stop()
       activeMapper = null
     }
+    keyboardService.setUseInterception(settings.use_interception ?? false)
     const mapper = new Mapper(
       deviceId,
       mappings,
@@ -117,7 +118,10 @@ export function registerIpcHandlers(): void {
       angleMappings,
     )
     mapper.start()
-    if (!mapper.isActive) return false
+    if (!mapper.isActive) {
+      keyboardService.setUseInterception(false)
+      return false
+    }
     activeMapper = mapper
     return true
   })
@@ -125,6 +129,7 @@ export function registerIpcHandlers(): void {
   handle('mapper:stop', () => {
     activeMapper?.stop()
     activeMapper = null
+    keyboardService.setUseInterception(false)
   })
 
   handle('mapper:is-active', () => activeMapper?.isActive ?? false)

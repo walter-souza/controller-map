@@ -1,6 +1,6 @@
 {
   "name": "controller-map",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Map gamepad buttons to keyboard shortcuts",
   "main": "out/main/index.js",
   "author": "walter-souza",
@@ -58,6 +58,7 @@
     "@kmamal/sdl": "^0.11.13",
     "@nut-tree-fork/nut-js": "^4.2.1",
     "electron-store": "^8.2.0",
+    "node-interception": "^2.0.4",
     "uiohook-napi": "^1.5.4"
   },
   "devDependencies": {

@@ -11,6 +11,7 @@ interface Props {
 export default function SettingsDialog({ current, onSave, onCancel }: Props) {
   const [initialDelay, setInitialDelay] = useState(String(current.initial_delay_ms))
   const [repeatInterval, setRepeatInterval] = useState(String(current.repeat_interval_ms))
+  const [useInterception, setUseInterception] = useState(current.use_interception ?? false)
   const [error, setError] = useState<string | null>(null)
 
   const handleSave = () => {
@@ -30,7 +31,11 @@ export default function SettingsDialog({ current, onSave, onCancel }: Props) {
       return
     }
 
-    onSave({ initial_delay_ms: delay, repeat_interval_ms: interval })
+    onSave({
+      initial_delay_ms: delay,
+      repeat_interval_ms: interval,
+      use_interception: useInterception,
+    })
   }
 
   return (
@@ -64,6 +69,20 @@ export default function SettingsDialog({ current, onSave, onCancel }: Props) {
             max={500}
             step={10}
             className="w-28 rounded border border-slate-300 px-2 py-1 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-300"
+          />
+        </div>
+        <div className="card p-4 flex items-center justify-between">
+          <div className="pr-4">
+            <span className="text-sm font-semibold text-slate-700 block">Emular Teclado via Kernel</span>
+            <span className="text-xs text-slate-400 block mt-0.5">
+              Bypassa bloqueios em jogos e programas usando o driver Interception.
+            </span>
+          </div>
+          <input
+            type="checkbox"
+            checked={useInterception}
+            onChange={(e) => setUseInterception(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
           />
         </div>
         {error && <p className="text-xs text-red-500">{error}</p>}
