@@ -37,6 +37,8 @@ export class KeyboardService {
   private _heldModifiers = new Set<string>()
   private _captureListener: ((e: { keycode: number }) => void) | null = null
   private _activeModifiers = new Set<string>()
+  private _suspendedModifiers = new Set<string>()
+  private _isolatedKeysHeld = new Set<string>()
 
   // Interception driver support
   private _useInterception = false
@@ -193,7 +195,9 @@ export class KeyboardService {
    */
   async pressCombo(combo: string, isolate = false): Promise<void> {
     if (isolate) {
-      await this.executeIsolated(combo, () => this._pressComboRaw(combo))
+      await this.sendKeyDown(combo, true)
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await this.sendKeyUp(combo, true)
     } else {
       await this._pressComboRaw(combo)
     }
@@ -259,11 +263,34 @@ export class KeyboardService {
    * Simulates holding a key combo string down.
    */
   async sendKeyDown(combo: string, isolate = false): Promise<void> {
+    const parts = combo
+      .toLowerCase()
+      .split('+')
+      .map((p) => p.trim())
+
     if (isolate) {
-      await this.executeIsolated(combo, () => this._sendKeyDownRaw(combo))
-    } else {
-      await this._sendKeyDownRaw(combo)
+      this._isolatedKeysHeld.add(combo)
+
+      const currentModifiers = new Set<string>()
+      const MODIFIER_NAMES = ['ctrl', 'control', 'alt', 'shift', 'meta', 'win']
+      for (const part of parts) {
+        if (MODIFIER_NAMES.includes(part)) {
+          currentModifiers.add(part)
+        }
+      }
+
+      const toSuspend = Array.from(this._activeModifiers).filter((m) => !currentModifiers.has(m))
+      if (toSuspend.length > 0) {
+        for (const mod of toSuspend) {
+          if (!this._suspendedModifiers.has(mod)) {
+            await this._releaseSingleKey(mod)
+            this._suspendedModifiers.add(mod)
+          }
+        }
+      }
     }
+
+    await this._sendKeyDownRaw(combo)
   }
 
   private async _sendKeyDownRaw(combo: string): Promise<void> {
@@ -273,14 +300,24 @@ export class KeyboardService {
       .map((p) => p.trim())
 
     const MODIFIER_NAMES = ['ctrl', 'control', 'alt', 'shift', 'meta', 'win']
+    const keysToPress: string[] = []
+
     for (const part of parts) {
       if (MODIFIER_NAMES.includes(part)) {
         this._activeModifiers.add(part)
+        // If an isolated key is active and this modifier is not in it, suspend instead of pressing
+        if (this._isolatedKeysHeld.size > 0 && !this._isModifierInIsolatedKeys(part)) {
+          this._suspendedModifiers.add(part)
+          continue
+        }
       }
+      keysToPress.push(part)
     }
 
+    if (keysToPress.length === 0) return
+
     if (this._useInterception && this._interceptionDevice) {
-      const resolvedKeys = parts.map(part => this._resolveScanCode(part)).filter(k => k !== null) as { code: number; isExtended: boolean }[]
+      const resolvedKeys = keysToPress.map(part => this._resolveScanCode(part)).filter(k => k !== null) as { code: number; isExtended: boolean }[]
       if (resolvedKeys.length === 0) return
 
       try {
@@ -302,7 +339,7 @@ export class KeyboardService {
 
     const keys: import('@nut-tree-fork/nut-js').Key[] = []
 
-    for (const part of parts) {
+    for (const part of keysToPress) {
       const key = this._resolveKey(part)
       if (key !== null) keys.push(key)
     }
@@ -321,9 +358,21 @@ export class KeyboardService {
    */
   async sendKeyUp(combo: string, isolate = false): Promise<void> {
     if (isolate) {
-      await this.executeIsolated(combo, () => this._sendKeyUpRaw(combo))
-    } else {
-      await this._sendKeyUpRaw(combo)
+      this._isolatedKeysHeld.delete(combo)
+    }
+
+    await this._sendKeyUpRaw(combo)
+
+    if (isolate && this._isolatedKeysHeld.size === 0) {
+      // Restore suspended modifiers
+      if (this._suspendedModifiers.size > 0) {
+        for (const mod of this._suspendedModifiers) {
+          if (this._activeModifiers.has(mod)) {
+            await this._pressSingleKey(mod)
+          }
+        }
+        this._suspendedModifiers.clear()
+      }
     }
   }
 
@@ -334,14 +383,23 @@ export class KeyboardService {
       .map((p) => p.trim())
 
     const MODIFIER_NAMES = ['ctrl', 'control', 'alt', 'shift', 'meta', 'win']
+    const keysToRelease: string[] = []
+
     for (const part of parts) {
       if (MODIFIER_NAMES.includes(part)) {
         this._activeModifiers.delete(part)
+        if (this._suspendedModifiers.has(part)) {
+          this._suspendedModifiers.delete(part)
+          continue
+        }
       }
+      keysToRelease.push(part)
     }
 
+    if (keysToRelease.length === 0) return
+
     if (this._useInterception && this._interceptionDevice) {
-      const resolvedKeys = parts.map(part => this._resolveScanCode(part)).filter(k => k !== null) as { code: number; isExtended: boolean }[]
+      const resolvedKeys = keysToRelease.map(part => this._resolveScanCode(part)).filter(k => k !== null) as { code: number; isExtended: boolean }[]
       if (resolvedKeys.length === 0) return
 
       try {
@@ -364,7 +422,7 @@ export class KeyboardService {
 
     const keys: import('@nut-tree-fork/nut-js').Key[] = []
 
-    for (const part of parts) {
+    for (const part of keysToRelease) {
       const key = this._resolveKey(part)
       if (key !== null) keys.push(key)
     }
@@ -378,38 +436,12 @@ export class KeyboardService {
     }
   }
 
-  /**
-   * Helper to temporarily release active modifiers, execute an action, and restore them.
-   */
-  async executeIsolated(combo: string, action: () => Promise<void> | void): Promise<void> {
-    const parts = combo
-      .toLowerCase()
-      .split('+')
-      .map((p) => p.trim())
-
-    const currentModifiers = new Set<string>()
-    const MODIFIER_NAMES = ['ctrl', 'control', 'alt', 'shift', 'meta', 'win']
-    for (const part of parts) {
-      if (MODIFIER_NAMES.includes(part)) {
-        currentModifiers.add(part)
-      }
+  private _isModifierInIsolatedKeys(mod: string): boolean {
+    for (const combo of this._isolatedKeysHeld) {
+      const parts = combo.toLowerCase().split('+').map(p => p.trim())
+      if (parts.includes(mod)) return true
     }
-
-    const toSuspend = Array.from(this._activeModifiers).filter((m) => !currentModifiers.has(m))
-
-    if (toSuspend.length > 0) {
-      for (const mod of toSuspend) {
-        await this._releaseSingleKey(mod)
-      }
-    }
-
-    await action()
-
-    if (toSuspend.length > 0) {
-      for (const mod of toSuspend) {
-        await this._pressSingleKey(mod)
-      }
-    }
+    return false
   }
 
   private async _pressSingleKey(name: string): Promise<void> {
