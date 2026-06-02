@@ -70,6 +70,7 @@ export default function MappingScreen({ device, onBack }: Props) {
   const [addPreset, setAddPreset] = useState<CaptureResult | undefined>(undefined)
   const [showAngleAdd, setShowAngleAdd] = useState(false)
   const [editingAngle, setEditingAngle] = useState<AngleMappingConfig | null>(null)
+  const [editingMapping, setEditingMapping] = useState<Mapping | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null)
   const [deleteAngleId, setDeleteAngleId] = useState<string | null>(null)
@@ -257,6 +258,14 @@ export default function MappingScreen({ device, onBack }: Props) {
 
   const handleMappingAdded = (m: Mapping) => {
     const next = mappings.filter((x) => !sameKey(x, m)).concat(m)
+    saveMappings(next)
+  }
+
+  const handleMappingEdited = (oldMapping: Mapping, newMapping: Mapping) => {
+    const next = mappings
+      .filter((x) => !sameKey(x, oldMapping))
+      .filter((x) => !sameKey(x, newMapping))
+      .concat(newMapping)
     saveMappings(next)
   }
 
@@ -460,6 +469,7 @@ export default function MappingScreen({ device, onBack }: Props) {
           axisValues={axisValues}
           onAddMapping={openAddWithPreset}
           onDeleteMapping={handleDeleteMapping}
+          onEditMapping={setEditingMapping}
           onEditAngleMapping={(stick) => {
             const existing = angleMappings.find(
               (a) => a.axis_x === stick.axis_x && a.axis_y === stick.axis_y
@@ -491,6 +501,14 @@ export default function MappingScreen({ device, onBack }: Props) {
               </span>
             )}
             <div className="flex-1" />
+            <button
+              onClick={() => setEditingMapping(m)}
+              disabled={isPlaying}
+              className="btn-ghost text-slate-500 hover:text-slate-700 hover:bg-slate-50 text-xs disabled:opacity-40 mr-1"
+              title="Editar mapeamento"
+            >
+              ✎
+            </button>
             <button
               onClick={() => setDeleteIndex(i)}
               className="btn-ghost text-red-400 hover:text-red-600 hover:bg-red-50 text-xs"
@@ -542,21 +560,28 @@ export default function MappingScreen({ device, onBack }: Props) {
       )}
 
       {/* Dialogs */}
-      {showAdd && (
+      {(showAdd || editingMapping) && (
         <AddMappingDialog
           deviceId={device.id}
           existingMappings={mappings}
           presetInput={addPreset}
+          editingMapping={editingMapping ?? undefined}
           resolveInputName={(type, buttonId, axisDirection) =>
             resolveButtonName(controllerProfile ?? { inputs: [] } as ControllerProfile, type, buttonId, axisDirection)
           }
           onConfirm={(m) => {
-            handleMappingAdded(m)
-            setShowAdd(false)
-            setAddPreset(undefined)
+            if (editingMapping) {
+              handleMappingEdited(editingMapping, m)
+              setEditingMapping(null)
+            } else {
+              handleMappingAdded(m)
+              setShowAdd(false)
+              setAddPreset(undefined)
+            }
           }}
           onCancel={() => {
             setShowAdd(false)
+            setEditingMapping(null)
             setAddPreset(undefined)
           }}
         />

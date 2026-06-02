@@ -11,6 +11,7 @@ interface Props {
   presetInput?: CaptureResult
   // Resolve profile display name for a captured input (button "A", axis "LS↑", etc.)
   resolveInputName?: (type: string, buttonId: number, axisDirection?: number) => string
+  editingMapping?: Mapping // Optional mapping to edit
 }
 
 // Capture phase state machine:
@@ -18,12 +19,45 @@ interface Props {
 // - Preset flow:  key → ready  (chord-capture skipped)
 type CapturePhase = 'chord-capture' | 'key' | 'ready'
 
-export default function AddMappingDialog({ deviceId, existingMappings, onConfirm, onCancel, presetInput, resolveInputName }: Props) {
-  const [phase, setPhase] = useState<CapturePhase>(presetInput ? 'key' : 'chord-capture')
+export default function AddMappingDialog({ deviceId, existingMappings, onConfirm, onCancel, presetInput, resolveInputName, editingMapping }: Props) {
+  const [phase, setPhase] = useState<CapturePhase>(() => {
+    if (editingMapping) return 'ready'
+    return presetInput ? 'key' : 'chord-capture'
+  })
+
   // When presetInput is given, it's the sole captured input (no chord)
-  const [capturedInputs, setCapturedInputs] = useState<CaptureResult[]>(presetInput ? [presetInput] : [])
-  const [keyCombo, setKeyCombo] = useState<string | null>(null)
-  const [isolateModifiers, setIsolateModifiers] = useState(false)
+  const [capturedInputs, setCapturedInputs] = useState<CaptureResult[]>(() => {
+    if (editingMapping) {
+      const primary: CaptureResult = editingMapping.source_type === 'diagonal' ? {
+        type: 'diagonal',
+        button_id: editingMapping.button_id,
+        button_name: editingMapping.button_name,
+        axis_direction: editingMapping.axis_direction,
+        axis_id_y: editingMapping.axis_id_y!,
+        axis_direction_y: editingMapping.axis_direction_y
+      } : editingMapping.source_type === 'axis' ? {
+        type: 'axis',
+        button_id: editingMapping.button_id,
+        button_name: editingMapping.button_name,
+        axis_direction: editingMapping.axis_direction
+      } : {
+        type: 'button',
+        button_id: editingMapping.button_id,
+        button_name: editingMapping.button_name
+      }
+      const extras: CaptureResult[] = (editingMapping.chord_inputs ?? []).map(c => ({
+        type: c.type,
+        button_id: c.button_id,
+        button_name: c.button_name,
+        axis_direction: c.axis_direction ?? 0
+      }))
+      return [primary, ...extras]
+    }
+    return presetInput ? [presetInput] : []
+  })
+
+  const [keyCombo, setKeyCombo] = useState<string | null>(editingMapping?.key_combo ?? null)
+  const [isolateModifiers, setIsolateModifiers] = useState(editingMapping?.isolate_modifiers ?? false)
 
   // Chord capture: accumulates all simultaneously held buttons; fires on release
   useEffect(() => {
@@ -82,6 +116,15 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
         .join('|')
     : ''
 
+  const editingKey = editingMapping
+    ? [
+        inputToken(editingMapping.source_type, editingMapping.button_id, editingMapping.axis_direction ?? 0),
+        ...(editingMapping.chord_inputs ?? []).map((c) => inputToken(c.type, c.button_id, c.axis_direction ?? 0)),
+      ]
+        .sort()
+        .join('|')
+    : ''
+
   const isOverwrite = primary
     ? existingMappings.some((m) => {
         const existKey = [
@@ -90,7 +133,7 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
         ]
           .sort()
           .join('|')
-        return newInputKey === existKey
+        return newInputKey === existKey && newInputKey !== editingKey
       })
     : false
 
@@ -116,6 +159,11 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
       setCapturedInputs([presetInput])
       setKeyCombo(null)
       setPhase('key')
+    } else if (editingMapping) {
+      // Keep existing inputs but allow recapturing chord
+      setCapturedInputs([])
+      setKeyCombo(null)
+      setPhase('chord-capture')
     } else {
       setCapturedInputs([])
       setKeyCombo(null)
@@ -130,8 +178,13 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
 
   const inputsLabel = capturedInputs.map((r) => r.button_name).join(' + ')
 
+  const dialogTitle = editingMapping ? "Editar Mapeamento" : "Novo Mapeamento"
+  const dialogSubtitle = editingMapping
+    ? `Configurando: ${inputsLabel}`
+    : (presetInput ? `Mapeando: ${presetInput.button_name}` : 'Segure os botões do acorde e solte para capturar')
+
   return (
-    <Modal title="Novo mapeamento" subtitle={presetInput ? `Mapeando: ${presetInput.button_name}` : 'Segure os botões do acorde e solte para capturar'} onClose={onCancel}>
+    <Modal title={dialogTitle} subtitle={dialogSubtitle} onClose={onCancel}>
       <div className="flex gap-4 p-5">
 
         {/* Controller panel */}
@@ -201,7 +254,7 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
         <p className="text-xs text-amber-600 px-5 pb-1">⚠ Este mapeamento já existe — confirmar irá sobrescrever</p>
       )}
 
-      <div className="border-t border-slate-200 px-5 py-3 flex justify-end gap-2">
+      <div className="border-t border-slate-200 px-5 py-3 flex justify-end gap-2 bg-slate-50 rounded-b-lg">
         <button onClick={onCancel} className="btn-secondary">Cancelar</button>
         <button
           onClick={handleConfirm}
@@ -214,4 +267,3 @@ export default function AddMappingDialog({ deviceId, existingMappings, onConfirm
     </Modal>
   )
 }
-
