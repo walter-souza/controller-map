@@ -6,7 +6,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        external: ['@kmamal/sdl', 'uiohook-napi', '@nut-tree-fork/nut-js', 'electron-store'],
+        external: ['@kmamal/sdl', 'uiohook-napi', '@nut-tree-fork/nut-js', 'electron-store', 'node-interception'],
       },
     },
   },

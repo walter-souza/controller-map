@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcEventChannel, IpcEventMap, IpcInvokeChannel, IpcInvokeMap } from '../shared/ipc'
 
 const api = {
+  platform: process.platform,
   invoke<C extends IpcInvokeChannel>(
     channel: C,
     ...args: IpcInvokeMap[C]['args']
