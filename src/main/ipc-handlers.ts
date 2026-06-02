@@ -116,6 +116,7 @@ export function registerIpcHandlers(): void {
       settings.initial_delay_ms / 1000,
       settings.repeat_interval_ms / 1000,
       angleMappings,
+      settings.hold_mode ?? false,
     )
     mapper.start()
     if (!mapper.isActive) {

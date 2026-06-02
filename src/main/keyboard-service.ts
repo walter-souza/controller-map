@@ -246,6 +246,99 @@ export class KeyboardService {
     }
   }
 
+  /**
+   * Simulates holding a key combo string down.
+   */
+  async sendKeyDown(combo: string): Promise<void> {
+    const parts = combo
+      .toLowerCase()
+      .split('+')
+      .map((p) => p.trim())
+
+    if (this._useInterception && this._interceptionDevice) {
+      const resolvedKeys = parts.map(part => this._resolveScanCode(part)).filter(k => k !== null) as { code: number; isExtended: boolean }[]
+      if (resolvedKeys.length === 0) return
+
+      try {
+        // Press all keys down in order
+        for (const r of resolvedKeys) {
+          const state = r.isExtended ? 2 : 0 // 2 is KeyState.E0 (Extended Down), 0 is KeyState.DOWN
+          this._interceptionDevice.send({
+            type: 'keyboard',
+            code: r.code,
+            state: state,
+            information: 0
+          })
+        }
+      } catch (e) {
+        console.error("Interception failed to send keys down:", e)
+      }
+      return
+    }
+
+    const keys: import('@nut-tree-fork/nut-js').Key[] = []
+
+    for (const part of parts) {
+      const key = this._resolveKey(part)
+      if (key !== null) keys.push(key)
+    }
+
+    if (keys.length === 0) return
+
+    try {
+      await keyboard.pressKey(...keys)
+    } catch {
+      // ignore — target window may not accept input
+    }
+  }
+
+  /**
+   * Simulates releasing a key combo string.
+   */
+  async sendKeyUp(combo: string): Promise<void> {
+    const parts = combo
+      .toLowerCase()
+      .split('+')
+      .map((p) => p.trim())
+
+    if (this._useInterception && this._interceptionDevice) {
+      const resolvedKeys = parts.map(part => this._resolveScanCode(part)).filter(k => k !== null) as { code: number; isExtended: boolean }[]
+      if (resolvedKeys.length === 0) return
+
+      try {
+        // Release all keys in reverse order (releasing modifiers last)
+        for (let i = resolvedKeys.length - 1; i >= 0; i--) {
+          const r = resolvedKeys[i]
+          const state = r.isExtended ? 3 : 1 // 3 is KeyState.E0 | KeyState.UP (Extended Up), 1 is KeyState.UP
+          this._interceptionDevice.send({
+            type: 'keyboard',
+            code: r.code,
+            state: state,
+            information: 0
+          })
+        }
+      } catch (e) {
+        console.error("Interception failed to send keys up:", e)
+      }
+      return
+    }
+
+    const keys: import('@nut-tree-fork/nut-js').Key[] = []
+
+    for (const part of parts) {
+      const key = this._resolveKey(part)
+      if (key !== null) keys.push(key)
+    }
+
+    if (keys.length === 0) return
+
+    try {
+      await keyboard.releaseKey(...keys)
+    } catch {
+      // ignore — target window may not accept input
+    }
+  }
+
   startCapture(callback: KeyCaptureCallback): void {
     if (this._capturing) this.stopCapture()
     this._capturing = true

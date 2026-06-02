@@ -17,7 +17,7 @@ const store = new Store<StoreSchema>({
   name: 'controller-map',
   defaults: {
     config: { last_device_id: null, last_device_name: null },
-    repeatSettings: { initial_delay_ms: 400, repeat_interval_ms: 50, use_interception: false },
+    repeatSettings: { initial_delay_ms: 400, repeat_interval_ms: 50, use_interception: false, hold_mode: false },
     profiles: [],
     activeProfileId: null,
   },
